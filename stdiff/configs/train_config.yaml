@@ -1,5 +1,5 @@
 Env:
-    output_dir: '/teamspace/studios/this_studio/out'
+    output_dir: '/mnt/c/Users/jdcha/STDiff_ckpts/sde_128'
     logger: 'tensorboard'
     resume_ckpt: null
     stdiff_init_ckpt: null
@@ -7,17 +7,17 @@ Env:
 
 Dataset:
     name: 'Dataset'
-    dir: '/teamspace/studios/this_studio/smol'
-    phase: 'fit'
+    dir: '/mnt/c/Users/jdcha/DL-dataset'
+    phase: 'deploy'
     dev_set_size: null
-    batch_size: 1
-    num_workers: 8
+    batch_size: 2
+    num_workers: 16
     num_channels: 3
     image_size: 128
-    num_observed_frames: 11
-    num_predict_frames: 11
-    test_num_observed_frames: 11
-    test_num_predict_frames: 11
+    num_observed_frames: 4
+    num_predict_frames: 5
+    test_num_observed_frames: 4
+    test_num_predict_frames: 5
     rand_Tp: 2
     rand_predict: True
     half_fps: False
