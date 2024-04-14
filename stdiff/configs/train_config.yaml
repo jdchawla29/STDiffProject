@@ -1,5 +1,5 @@
 Env:
-    output_dir: # output directory
+    output_dir: /teamspace/studios/this_studio/out # output directory
     logger: 'tensorboard'
     resume_ckpt: null
     stdiff_init_ckpt: null
@@ -7,7 +7,7 @@ Env:
 
 Dataset:
     name: 'Dataset'
-    dir: # path to the dataset
+    dir: /teamspace/studios/this_studio/smol_data # path to the dataset
     phase: 'fit'
     dev_set_size: null
     batch_size: 4

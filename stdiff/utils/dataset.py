@@ -61,7 +61,7 @@ class LitDataModule(pl.LightningDataModule):
 
         # Assign Test split(s) for use in Dataloaders
         if stage in (None, "test"):
-            TestData = MyDataset(self.cfg.Dataset.dir, transform = self.test_transform, train = False, val = False, 
+            TestData = MyDataset(self.cfg.Dataset.dir, transform = self.test_transform, train = False, 
                                     num_observed_frames= self.cfg.Dataset.test_num_observed_frames, num_predict_frames= self.cfg.Dataset.test_num_predict_frames)
             self.test_set = TestData()
 
@@ -88,7 +88,7 @@ class MyDataset(object):
     the original frame size is (H, W) = (160,240)
     Split the dataset and return the train and test dataset
     """
-    def __init__(self, dir, transform, train, val,
+    def __init__(self, dir, transform, train,
                  num_observed_frames, num_predict_frames):
         """
         Args:
@@ -107,12 +107,7 @@ class MyDataset(object):
         self.path = Path(dir).absolute()
         self.train = train
 
-        if self.train:
-            self.video_ids = list(range(2000, 14000))
-        else:
-            self.video_ids = list(range(14000, 15000))
-
-        frame_folders = self.__getFramesFolder__(self.video_ids)
+        frame_folders = [self.path.joinpath(s) for s in os.listdir(self.path)] # self.__getFramesFolder__(self.video_ids)
         self.clips = self.__getClips__(frame_folders)
 
     def __call__(self):
@@ -120,13 +115,9 @@ class MyDataset(object):
         Returns:
             clip_set --- ClipDataset object
         """
-        
         clip_set = ClipDataset(self.num_observed_frames, self.num_predict_frames, self.clips, self.transform, self.color_mode)
-        if self.val:
-            val_clip_set = ClipDataset(self.num_observed_frames, self.num_predict_frames, self.val_clips, self.transform, self.color_mode)
-            return clip_set, val_clip_set
-        else:
-            return clip_set
+           
+        return clip_set
     
     def __getClips__(self, frame_folders):
         clips = []
@@ -147,13 +138,9 @@ class MyDataset(object):
             return_folders --- the returned video frames folders
         """
 
-        frame_folders = [self.path.joinpath(s) for s in os.listdir(self.path)]
-
         return_folders = []
         for ff in frame_folders:
-            video_id = int(str(ff).strip().split('_')[2][-2:])
-            if video_id in video_ids:
-                return_folders.append(ff)
+            return_folders.append(ff)
         
         return return_folders
     
