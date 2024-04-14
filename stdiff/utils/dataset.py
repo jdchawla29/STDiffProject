@@ -27,7 +27,6 @@ class LitDataModule(pl.LightningDataModule):
         super().__init__()
         self.cfg = cfg
         self.len_train_loader = None
-        self.len_val_loader = None
         self.len_test_loader = None
         self.img_size = cfg.Dataset.image_size
 
@@ -49,25 +48,20 @@ class LitDataModule(pl.LightningDataModule):
     def setup(self, stage: Optional[str] = None):
         # Assign Train/val split(s) for use in Dataloaders
         if stage in (None, "fit"):
-            TrainData = Dataset(self.cfg.Dataset.dir, transform = self.train_transform, train = True, val = True, 
+            TrainData = MyDataset(self.cfg.Dataset.dir, transform = self.train_transform, train = True, 
                                         num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
-            self.train_set, self.val_set = TrainData()
             
-            # Use all training dataset for the final training
-            if self.cfg.Dataset.phase == 'deploy':
-                self.train_set = ConcatDataset([self.train_set, self.val_set])
+            self.train_set = TrainData()
 
             dev_set_size = self.cfg.Dataset.dev_set_size
             if dev_set_size is not None:
                 self.train_set, _ = random_split(self.train_set, [dev_set_size, len(self.train_set) - dev_set_size], generator=torch.Generator().manual_seed(2021))
-                self.val_set, _ = random_split(self.val_set, [dev_set_size, len(self.val_set) - dev_set_size], generator=torch.Generator().manual_seed(2021))
-            
+
             self.len_train_loader = len(self.train_dataloader())
-            self.len_val_loader = len(self.val_dataloader())
 
         # Assign Test split(s) for use in Dataloaders
         if stage in (None, "test"):
-            TestData = Dataset(self.cfg.Dataset.dir, transform = self.test_transform, train = False, val = False, 
+            TestData = MyDataset(self.cfg.Dataset.dir, transform = self.test_transform, train = False, val = False, 
                                     num_observed_frames= self.cfg.Dataset.test_num_observed_frames, num_predict_frames= self.cfg.Dataset.test_num_predict_frames)
             self.test_set = TestData()
 
@@ -79,9 +73,6 @@ class LitDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         return DataLoader(self.train_set, shuffle = True, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = True, collate_fn = self.collate_fn)
 
-    def val_dataloader(self):
-        return DataLoader(self.val_set, shuffle = False, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = True, collate_fn = self.collate_fn)
-
     def test_dataloader(self):
         return DataLoader(self.test_set, shuffle = False, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = False, collate_fn = self.collate_fn)
 
@@ -89,13 +80,13 @@ class LitDataModule(pl.LightningDataModule):
 def get_lightning_module_dataloader(cfg):
     pl_datamodule = LitDataModule(cfg)
     pl_datamodule.setup()
-    return pl_datamodule.train_dataloader(), pl_datamodule.val_dataloader(), pl_datamodule.test_dataloader()
+    return pl_datamodule.train_dataloader(), pl_datamodule.test_dataloader()
 
-class Dataset(object):
+class MyDataset(object):
     """
     a wrapper for ClipDataset, inspired by the original implementation of KTH dataset
     the original frame size is (H, W) = (160,240)
-    Split the KTH dataset and return the train and test dataset
+    Split the dataset and return the train and test dataset
     """
     def __init__(self, dir, transform, train, val,
                  num_observed_frames, num_predict_frames):
@@ -115,21 +106,14 @@ class Dataset(object):
 
         self.path = Path(dir).absolute()
         self.train = train
-        self.val = val
+
         if self.train:
-            self.video_ids = list(range(25))
-            if self.val:
-                self.val_video_ids = [random.randint(0, 16)]
-                self.video_ids.remove(self.val_video_ids[0])
+            self.video_ids = list(range(2000, 14000))
         else:
-            self.video_ids = list(range(16, 25))
+            self.video_ids = list(range(14000, 15000))
 
         frame_folders = self.__getFramesFolder__(self.video_ids)
         self.clips = self.__getClips__(frame_folders)
-        
-        if self.val:
-            val_frame_folders = self.__getFramesFolder__(self.val_video_ids)
-            self.val_clips = self.__getClips__(val_frame_folders)
 
     def __call__(self):
         """

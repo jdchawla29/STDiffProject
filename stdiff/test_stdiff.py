@@ -52,7 +52,7 @@ def main(cfg : DictConfig) -> None:
     stdiff_pipeline = STDiffPipeline(stdiff, scheduler).to(device)
     if not accelerator.is_main_process:
         stdiff_pipeline.disable_pgbar()
-    _, _, test_loader = get_lightning_module_dataloader(cfg)
+    _, test_loader = get_lightning_module_dataloader(cfg)
     stdiff_pipeline, test_loader = accelerator.prepare(stdiff_pipeline, test_loader)
 
     To = cfg.Dataset.test_num_observed_frames

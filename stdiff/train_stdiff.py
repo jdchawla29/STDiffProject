@@ -170,7 +170,7 @@ def main(cfg : DictConfig) -> None:
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
 
     # Preprocessing the datasets and DataLoaders creation.
-    train_dataloader, val_dataloader, test_dataloader = get_lightning_module_dataloader(cfg)
+    train_dataloader, _ = get_lightning_module_dataloader(cfg)
 
     # Initialize the learning rate scheduler
     lr_scheduler = get_scheduler(
