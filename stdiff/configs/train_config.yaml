@@ -1,23 +1,23 @@
 Env:
-    output_dir: '/home/travail/xiyex/STDiff_ckpts/smmnist_sde_64'
+    output_dir: # output directory
     logger: 'tensorboard'
     resume_ckpt: null
     stdiff_init_ckpt: null
     
 
 Dataset:
-    name: 'SMMNIST'
-    dir: './SMMNIST'
-    phase: 'deploy'
+    name: 'Dataset'
+    dir: # path to the dataset
+    phase: 'fit'
     dev_set_size: null
-    batch_size: 10
-    num_workers: 32
-    num_channels: 1
+    batch_size: 4
+    num_workers: 8
+    num_channels: 3
     image_size: 64
-    num_observed_frames: 5
-    num_predict_frames: 10
-    test_num_observed_frames: 5
-    test_num_predict_frames: 10
+    num_observed_frames: 11
+    num_predict_frames: 11
+    test_num_observed_frames: 11
+    test_num_predict_frames: 11
     rand_Tp: 6
     rand_predict: True
     half_fps: False
@@ -26,13 +26,13 @@ STDiff:
     Diffusion:
         prediction_type: 'epsilon' #'epsilon' or 'sample'
         ddpm_num_steps: 1000
-        ddpm_num_inference_steps: 300
+        ddpm_num_inference_steps: 100
         ddpm_beta_schedule: 'linear'
 
         unet_config:
             sample_size: 64
-            in_channels: 2
-            out_channels: 1
+            in_channels: 6
+            out_channels: 3
             m_channels: 256
             layers_per_block: 2
             #config for resolution 128
@@ -53,7 +53,7 @@ STDiff:
         MotionEncoder:
             learn_diff_image: True
             image_size: 64
-            in_channels: 1
+            in_channels: 3
             model_channels: 64
             n_downs: 2
         DiffUnet:
@@ -74,7 +74,7 @@ STDiff:
                 norm: null
 
 Training:
-    use_ema: True
+    use_ema: False
     ema_inv_gamma: 1.0
     ema_power: 0.75
     ema_max_decay: 0.9999
@@ -87,10 +87,10 @@ Training:
     adam_weight_decay: 1e-6
     adam_epsilon: 1e-8
 
-    epochs: 400
+    epochs: 800
     save_images_epochs: 4
-    save_model_epochs: 2
-    checkpointing_steps: 10 #number of steps to save a resuming checkpoint
+    save_model_epochs: 4
+    checkpointing_steps: 1000 #number of steps to save a resuming checkpoint
 
     gradient_accumulation_steps: 1 #4 for 128 resolution, 4 GPU training
     mixed_precision: "no" #["no", "fp16", "bf16"],

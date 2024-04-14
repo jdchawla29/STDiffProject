@@ -1,8 +1,5 @@
 import torch
-from torch.utils import data
-import torchvision.utils as vutils
 import torchvision.transforms as transforms
-from torchvision import datasets
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
 from torch import Tensor
 import pytorch_lightning as pl
@@ -36,33 +33,8 @@ class LitDataModule(pl.LightningDataModule):
 
         self.norm_transform = lambda x: x * 2. - 1.
 
-        if cfg.Dataset.name == 'KTH':
-            self.train_transform = transforms.Compose([VidCenterCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
-            self.test_transform = transforms.Compose([VidCenterCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-        
-        if cfg.Dataset.name == 'KITTI':
-            self.train_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
-            self.test_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-
-        if cfg.Dataset.name == 'MNIST':
-            self.train_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
-            self.test_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-        
-        if cfg.Dataset.name == 'SMMNIST':
-            self.train_transform = self.test_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-            self.test_transform = self.test_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-
-        if cfg.Dataset.name == 'BAIR':
-            self.train_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
-            self.test_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-
-        if cfg.Dataset.name == 'CityScapes':
-            self.train_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-            self.test_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-        
-        if cfg.Dataset.name == 'Human36M':
-            self.train_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-            self.test_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
+        self.train_transform = transforms.Compose([VidCenterCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
+        self.test_transform = transforms.Compose([VidCenterCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
         
         o_resize = None
         p_resize = None
@@ -77,51 +49,11 @@ class LitDataModule(pl.LightningDataModule):
     def setup(self, stage: Optional[str] = None):
         # Assign Train/val split(s) for use in Dataloaders
         if stage in (None, "fit"):
-            if self.cfg.Dataset.name == 'KTH':
-                KTHTrainData = KTHDataset(self.cfg.Dataset.dir, transform = self.train_transform, train = True, val = True, 
-                                          num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)#, actions = ['walking_no_empty'])
-                self.train_set, self.val_set = KTHTrainData()
+            TrainData = Dataset(self.cfg.Dataset.dir, transform = self.train_transform, train = True, val = True, 
+                                        num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
+            self.train_set, self.val_set = TrainData()
             
-            if self.cfg.Dataset.name == 'KITTI':
-                KITTITrainData = KITTIDataset(self.cfg.Dataset.dir, [10, 11, 12, 13], transform = self.train_transform, train = True, val = True,
-                                                num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames
-                                                )
-                self.train_set, self.val_set = KITTITrainData()
-
-            if self.cfg.Dataset.name == 'BAIR':
-                BAIR_train_whole_set = BAIRDataset(Path(self.cfg.Dataset.dir).joinpath('train'), self.train_transform, color_mode = 'RGB', 
-                                                   num_observed_frames = self.cfg.Dataset.num_observed_frames, num_predict_frames = self.cfg.Dataset.num_predict_frames,
-                                                   )()
-                train_val_ratio = 0.95
-                BAIR_train_set_length = int(len(BAIR_train_whole_set) * train_val_ratio)
-                BAIR_val_set_length = len(BAIR_train_whole_set) - BAIR_train_set_length
-                self.train_set, self.val_set = random_split(BAIR_train_whole_set, [BAIR_train_set_length, BAIR_val_set_length],
-                                                            generator=torch.Generator().manual_seed(2021))
-            if self.cfg.Dataset.name == 'CityScapes':
-                self.train_set = CityScapesDataset(Path(self.cfg.Dataset.dir).joinpath('train'), self.train_transform, color_mode = 'RGB', 
-                                                   num_observed_frames = self.cfg.Dataset.num_observed_frames, num_predict_frames = self.cfg.Dataset.num_predict_frames,
-                                                   )()
-                self.val_set = CityScapesDataset(Path(self.cfg.Dataset.dir).joinpath('val'), self.train_transform, color_mode = 'RGB', 
-                                                   num_observed_frames = self.cfg.Dataset.num_observed_frames, num_predict_frames = self.cfg.Dataset.num_predict_frames,
-                                                   )()
-
-            if self.cfg.Dataset.name == 'MNIST':
-                self.train_set = MovingMNISTDataset(Path(self.cfg.Dataset.dir).joinpath('moving-mnist-train.npz'), self.train_transformo)
-                self.val_set = MovingMNISTDataset(Path(self.cfg.Dataset.dir).joinpath('moving-mnist-valid.npz'), self.train_transform)
-            
-            if self.cfg.Dataset.name == 'SMMNIST':
-                self.train_set = StochasticMovingMNIST(True, Path(self.cfg.Dataset.dir), self.cfg.Dataset.num_observed_frames, self.cfg.Dataset.num_predict_frames, self.train_transform)
-                train_val_ratio = 0.95
-                SMMNIST_train_set_length = int(len(self.train_set) * train_val_ratio)
-                SMMNIST_val_set_length = len(self.train_set) - SMMNIST_train_set_length
-                self.train_set, self.val_set = random_split(self.train_set, [SMMNIST_train_set_length, SMMNIST_val_set_length],
-                                                            generator=torch.Generator().manual_seed(2021))
-            
-            if self.cfg.Dataset.name == 'Human36M':
-                self.train_set = Human36MDataset(Path(self.cfg.Dataset.dir).joinpath('train'), self.train_transform, color_mode = 'RGB', num_observed_frames = self.cfg.Dataset.num_observed_frames, num_predict_frames = self.cfg.Dataset.num_predict_frames)()
-                self.val_set = Human36MDataset(Path(self.cfg.Dataset.dir).joinpath('valid'), self.train_transform, color_mode = 'RGB', num_observed_frames = self.cfg.Dataset.num_observed_frames, num_predict_frames = self.cfg.Dataset.num_predict_frames)()
-
-            #Use all training dataset for the final training
+            # Use all training dataset for the final training
             if self.cfg.Dataset.phase == 'deploy':
                 self.train_set = ConcatDataset([self.train_set, self.val_set])
 
@@ -135,32 +67,9 @@ class LitDataModule(pl.LightningDataModule):
 
         # Assign Test split(s) for use in Dataloaders
         if stage in (None, "test"):
-            if self.cfg.Dataset.name == 'KTH':
-                KTHTestData = KTHDataset(self.cfg.Dataset.dir, transform = self.test_transform, train = False, val = False, 
-                                        num_observed_frames= self.cfg.Dataset.test_num_observed_frames, num_predict_frames= self.cfg.Dataset.test_num_predict_frames)#, actions = ['walking_no_empty'])
-                self.test_set = KTHTestData()
-            
-            if self.cfg.Dataset.name == 'KITTI':
-                KITTITrainData = KITTIDataset(self.cfg.Dataset.dir, [10, 11, 12, 13], transform = self.test_transform, train = False, val = False,
-                                                num_observed_frames= self.cfg.Dataset.test_num_observed_frames, num_predict_frames= self.cfg.Dataset.test_num_predict_frames,
-                                                )
-                self.test_set = KITTITrainData()
-
-            if self.cfg.Dataset.name == 'BAIR':
-                self.test_set = BAIRDataset(Path(self.cfg.Dataset.dir).joinpath('test'), self.test_transform, color_mode = 'RGB', 
-                                            num_observed_frames= self.cfg.Dataset.test_num_observed_frames, num_predict_frames= self.cfg.Dataset.test_num_predict_frames, )()
-            if self.cfg.Dataset.name == 'CityScapes':
-                self.test_set = CityScapesDataset(Path(self.cfg.Dataset.dir).joinpath('test'), self.test_transform, color_mode = 'RGB', 
-                                                   num_observed_frames = self.cfg.Dataset.test_num_observed_frames, num_predict_frames = self.cfg.Dataset.test_num_predict_frames,
-                                                   )()
-            if self.cfg.Dataset.name == 'MNIST':
-                self.test_set = MovingMNISTDataset(Path(self.cfg.Dataset.dir).joinpath('moving-mnist-test.npz'), self.test_transform)
-            
-            if self.cfg.Dataset.name == 'SMMNIST':
-                self.test_set = StochasticMovingMNIST(False, Path(self.cfg.Dataset.dir), self.cfg.Dataset.test_num_observed_frames, self.cfg.Dataset.test_num_predict_frames, self.test_transform)
-            
-            if self.cfg.Dataset.name == 'Human36M':
-                self.test_set = Human36MDataset(Path(self.cfg.Dataset.dir).joinpath('test'), self.train_transform, color_mode = 'RGB', num_observed_frames = self.cfg.Dataset.test_num_observed_frames, num_predict_frames = self.cfg.Dataset.test_num_predict_frames)()
+            TestData = Dataset(self.cfg.Dataset.dir, transform = self.test_transform, train = False, val = False, 
+                                    num_observed_frames= self.cfg.Dataset.test_num_observed_frames, num_predict_frames= self.cfg.Dataset.test_num_predict_frames)
+            self.test_set = TestData()
 
             dev_set_size = self.cfg.Dataset.dev_set_size
             if dev_set_size is not None:
@@ -182,19 +91,19 @@ def get_lightning_module_dataloader(cfg):
     pl_datamodule.setup()
     return pl_datamodule.train_dataloader(), pl_datamodule.val_dataloader(), pl_datamodule.test_dataloader()
 
-class KTHDataset(object):
+class Dataset(object):
     """
-    KTH dataset, a wrapper for ClipDataset
-    the original frame size is (H, W) = (120, 160)
+    a wrapper for ClipDataset, inspired by the original implementation of KTH dataset
+    the original frame size is (H, W) = (160,240)
     Split the KTH dataset and return the train and test dataset
     """
-    def __init__(self, KTH_dir, transform, train, val,
+    def __init__(self, dir, transform, train, val,
                  num_observed_frames, num_predict_frames):
         """
         Args:
             KTH_dir --- Directory for extracted KTH video frames
             train --- True for training dataset, False for test dataset
-            transform --- trochvison transform functions
+            transform --- torchvision transform functions
             num_observed_frames --- number of past frames
             num_predict_frames --- number of future frames
         """
@@ -204,7 +113,7 @@ class KTHDataset(object):
         self.transform = transform
         self.color_mode = 'RGB'
 
-        self.KTH_path = Path(KTH_dir).absolute()
+        self.path = Path(dir).absolute()
         self.train = train
         self.val = val
         if self.train:
@@ -249,12 +158,12 @@ class KTHDataset(object):
     
     def __getFramesFolder__(self, video_ids):
         """
-        Get the KTH frames folders for ClipDataset
+        Get the frames folders for ClipDataset
         Returns:
             return_folders --- the returned video frames folders
         """
 
-        frame_folders = [self.KTH_path.joinpath(s) for s in os.listdir(self.KTH_path)]
+        frame_folders = [self.path.joinpath(s) for s in os.listdir(self.path)]
 
         return_folders = []
         for ff in frame_folders:
@@ -263,152 +172,6 @@ class KTHDataset(object):
                 return_folders.append(ff)
         
         return return_folders
-
-class BAIRDataset(object):
-    """
-    BAIR dataset, a wrapper for ClipDataset
-    the original frame size is (H, W) = (64, 64)
-    The train and test frames has been previously splitted: ref "Self-Supervised Visual Planning with Temporal Skip Connections"
-    """
-    def __init__(self, frames_dir: str, transform, color_mode = 'RGB', 
-                 num_observed_frames = 10, num_predict_frames = 10):
-        """
-        Args:
-            frames_dir --- Directory of extracted video frames and original videos.
-            transform --- trochvison transform functions
-            color_mode --- 'RGB' or 'grey_scale' color mode for the dataset
-            num_observed_frames --- number of past frames
-            num_predict_frames --- number of future frames
-            clip_length --- number of frames for each video clip example for model
-        """
-        self.frames_path = Path(frames_dir).absolute()
-        self.num_observed_frames = num_observed_frames
-        self.num_predict_frames = num_predict_frames
-        self.clip_length = num_observed_frames + num_predict_frames
-        self.transform = transform
-        self.color_mode = color_mode
-
-        self.clips = self.__getClips__()
-
-
-    def __call__(self):
-        """
-        Returns:
-            data_set --- ClipDataset object
-        """
-        data_set = ClipDataset(self.num_observed_frames, self.num_predict_frames, self.clips, self.transform, self.color_mode)
-
-        return data_set
-    
-    def __getClips__(self):
-        clips = []
-        frames_folders = os.listdir(self.frames_path)
-        frames_folders = [self.frames_path.joinpath(s) for s in frames_folders]
-        for folder in frames_folders:
-            img_files = sorted(list(folder.glob('*')))
-            clip_num = len(img_files) // self.clip_length
-            rem_num = len(img_files) % self.clip_length
-            img_files = img_files[rem_num // 2 : rem_num//2 + clip_num*self.clip_length]
-            for i in range(clip_num):
-                clips.append(img_files[i*self.clip_length : (i+1)*self.clip_length])
-
-        return clips
-
-class CityScapesDataset(BAIRDataset):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-    
-    def __getClips__(self):
-        clips = []
-        frames_folders = os.listdir(self.frames_path)
-        frames_folders = [self.frames_path.joinpath(s) for s in frames_folders]
-        for folder in frames_folders:
-            all_imgs = sorted(list(folder.glob('*')))
-            obj_dict = {}
-            for f in all_imgs:
-                id = str(f).split('_')[1]
-                if id in obj_dict:
-                    obj_dict[id].append(f)
-                else:
-                    obj_dict[id] = [f]
-            for k, img_files in obj_dict.items():
-                for k, g in groupby(enumerate(img_files), lambda ix: ix[0]-int(str(ix[1]).split('_')[2])):
-                    clip_files = list(list(zip(*list(g)))[1])
-                    
-                    clip_num = len(clip_files) // self.clip_length
-                    rem_num = len(clip_files) % self.clip_length
-                    clip_files = clip_files[rem_num // 2 : rem_num//2 + clip_num*self.clip_length]
-                    for i in range(clip_num):
-                        clips.append(clip_files[i*self.clip_length : (i+1)*self.clip_length])
-
-        return clips
-
-class KITTIDataset(object):
-    def __init__(self, KITTI_dir, test_folder_ids, transform, train, val,
-                 num_observed_frames, num_predict_frames):
-        """
-        Args:
-            KITTI_dir --- Directory for extracted KITTI video frames
-            train --- True for training dataset, False for test dataset
-            transform --- trochvison transform functions
-            num_observed_frames --- number of past frames
-            num_predict_frames --- number of future frames
-        """
-        self.num_observed_frames = num_observed_frames
-        self.num_predict_frames = num_predict_frames
-        self.clip_length = num_observed_frames + num_predict_frames
-        self.transform = transform
-        self.color_mode = 'RGB'
-
-        self.KITTI_path = Path(KITTI_dir).absolute()
-        self.train = train
-        self.val = val
-
-        self.all_folders = sorted(os.listdir(self.KITTI_path))
-        self.num_examples = len(self.all_folders)
-        
-        self.folder_id = list(range(self.num_examples))
-        if self.train:
-            self.train_folders = [self.all_folders[i] for i in range(self.num_examples) if i not in test_folder_ids]
-            if self.val:
-                self.val_folders = self.train_folders[0:2]
-                self.train_folders = self.train_folders[2:]
-    
-        else:
-            self.test_folders = [self.all_folders[i] for i in test_folder_ids]
-        
-        if self.train:
-            self.train_clips = self.__getClips__(self.train_folders)
-            if self.val:
-                self.val_clips = self.__getClips__(self.val_folders)
-        else:
-            self.test_clips = self.__getClips__(self.test_folders)
-
-    def __call__(self):
-        """
-        Returns:
-            clip_set --- ClipDataset object
-        """
-        if self.train:
-            clip_set = ClipDataset(self.num_observed_frames, self.num_predict_frames, self.train_clips, self.transform, self.color_mode)
-            if self.val:
-                val_clip_set = ClipDataset(self.num_observed_frames, self.num_predict_frames, self.val_clips, self.transform, self.color_mode)
-                return clip_set, val_clip_set
-            return clip_set
-        else:
-            return ClipDataset(self.num_observed_frames, self.num_predict_frames, self.test_clips, self.transform, self.color_mode)
-    
-    def __getClips__(self, frame_folders):
-        clips = []
-        for folder in frame_folders:
-            img_files = sorted(list(self.KITTI_path.joinpath(folder).glob('*')))
-            clip_num = len(img_files) // self.clip_length
-            rem_num = len(img_files) % self.clip_length
-            img_files = img_files[rem_num // 2 : rem_num//2 + clip_num*self.clip_length]
-            for i in range(clip_num):
-                clips.append(img_files[i*self.clip_length : (i+1)*self.clip_length])
-
-        return clips
     
 class ClipDataset(Dataset):
     """
@@ -420,7 +183,7 @@ class ClipDataset(Dataset):
             num_observed_frames --- number of past frames
             num_predict_frames --- number of future frames
             clips --- List of video clips frames file path
-            transfrom --- torchvision transforms for the image
+            transform --- torchvision transforms for the image
             color_mode --- 'RGB' for RGB dataset, 'grey_scale' for grey_scale dataset
 
         Return batched Sample:
@@ -482,109 +245,6 @@ class ClipDataset(Dataset):
         video.release()
         #imgs[0].save(str(Path(file_name).absolute()), save_all = True, append_images = imgs[1:])
 
-class StochasticMovingMNIST(Dataset):
-    """https://github.com/edenton/svg/blob/master/data/moving_mnist.py"""
-    """Data Handler that creates Bouncing MNIST dataset on the fly."""
-    def __init__(self, train_flag, data_root, num_observed_frames, num_predict_frames, transform, num_digits=2, image_size=64, deterministic=False):
-        path = data_root
-        self.num_observed_frames = num_observed_frames
-        self.num_predict_frames = num_predict_frames
-        self.seq_len = num_observed_frames + num_predict_frames
-        self.transform = transform
-        self.num_digits = num_digits  
-        self.image_size = image_size 
-        self.step_length = 0.1
-        self.digit_size = 32
-        self.deterministic = deterministic
-        self.seed_is_set = False # multi threaded loading
-        self.channels = 1 
-
-        self.data = datasets.MNIST(
-            path,
-            train=train_flag,
-            download=False,
-            transform=transforms.Compose(
-                [transforms.Resize(self.digit_size, antialias=True),
-                 transforms.ToTensor()]))
-
-        self.N = len(self.data)
-
-    def set_seed(self, seed):
-        if not self.seed_is_set:
-            self.seed_is_set = True
-            np.random.seed(seed)
-          
-    def __len__(self):
-        return self.N
-    
-    def __getitem__(self, idx):
-        full_clip = torch.from_numpy(self.__getnparray__(idx))
-        imgs = []
-        for i in range(full_clip.shape[0]):
-            img = transforms.ToPILImage()(full_clip[i, ...])
-            imgs.append(img)
-        
-        full_clip = self.transform(imgs)
-
-        past_clip = full_clip[0:self.num_observed_frames, ...]
-        future_clip = full_clip[self.num_observed_frames:, ...]
-
-        return past_clip, future_clip
-
-    def __getnparray__(self, index):
-        self.set_seed(index)
-        image_size = self.image_size
-        digit_size = self.digit_size
-        x = np.zeros((self.seq_len,
-                      image_size, 
-                      image_size, 
-                      self.channels),
-                    dtype=np.float32)
-        for n in range(self.num_digits):
-            idx = np.random.randint(self.N)
-            digit, _ = self.data[idx]
-
-            sx = np.random.randint(image_size-digit_size)
-            sy = np.random.randint(image_size-digit_size)
-            dx = np.random.randint(-4, 5)
-            dy = np.random.randint(-4, 5)
-            for t in range(self.seq_len):
-                if sy < 0:
-                    sy = 0 
-                    if self.deterministic:
-                        dy = -dy
-                    else:
-                        dy = np.random.randint(1, 5)
-                        dx = np.random.randint(-4, 5)
-                elif sy >= image_size-32:
-                    sy = image_size-32-1
-                    if self.deterministic:
-                        dy = -dy
-                    else:
-                        dy = np.random.randint(-4, 0)
-                        dx = np.random.randint(-4, 5)
-                    
-                if sx < 0:
-                    sx = 0 
-                    if self.deterministic:
-                        dx = -dx
-                    else:
-                        dx = np.random.randint(1, 5)
-                        dy = np.random.randint(-4, 5)
-                elif sx >= image_size-32:
-                    sx = image_size-32-1
-                    if self.deterministic:
-                        dx = -dx
-                    else:
-                        dx = np.random.randint(-4, 0)
-                        dy = np.random.randint(-4, 5)
-                   
-                x[t, sy:sy+32, sx:sx+32, 0] += digit.numpy().squeeze()
-                sy += dy
-                sx += dx
-
-        x[x>1] = 1.
-        return x.transpose(0, 3, 1, 2)
 
 def svrfcn(batch_data, rand_Tp = 3, rand_predict = True, o_resize = None, p_resize = None, half_fps = False):
     """
