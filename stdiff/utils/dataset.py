@@ -39,7 +39,6 @@ class LitDataModule(pl.LightningDataModule):
         if cfg.Dataset.name == 'KTH':
             self.train_transform = transforms.Compose([VidCenterCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
             self.test_transform = transforms.Compose([VidCenterCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
-            self.val_person_ids = [5]
         
         if cfg.Dataset.name == 'KITTI':
             self.train_transform = transforms.Compose([VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
@@ -80,8 +79,7 @@ class LitDataModule(pl.LightningDataModule):
         if stage in (None, "fit"):
             if self.cfg.Dataset.name == 'KTH':
                 KTHTrainData = KTHDataset(self.cfg.Dataset.dir, transform = self.train_transform, train = True, val = True, 
-                                          num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames,
-                                          val_person_ids = self.val_person_ids)#, actions = ['walking_no_empty'])
+                                          num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)#, actions = ['walking_no_empty'])
                 self.train_set, self.val_set = KTHTrainData()
             
             if self.cfg.Dataset.name == 'KITTI':
@@ -207,7 +205,6 @@ class KTHDataset(object):
         self.color_mode = 'RGB'
 
         self.KTH_path = Path(KTH_dir).absolute()
-        self.actions = actions
         self.train = train
         self.val = val
         if self.train:
@@ -256,14 +253,16 @@ class KTHDataset(object):
         Returns:
             return_folders --- the returned video frames folders
         """
-        
-        frame_folders = os.listdir(self.KTH_path)
+
+        frame_folders = [self.KTH_path.joinpath(s) for s in os.listdir(self.KTH_path)]
 
         return_folders = []
         for ff in frame_folders:
-            video_id = int(str(ff).strip().split('_')[1][-2:])
+            video_id = int(str(ff).strip().split('_')[2][-2:])
             if video_id in video_ids:
                 return_folders.append(ff)
+        
+        return return_folders
 
 class BAIRDataset(object):
     """

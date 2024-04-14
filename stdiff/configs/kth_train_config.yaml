@@ -1,5 +1,5 @@
 Env:
-    output_dir: '/home/travail/xiyex/STDiff_ckpts/kth_sde_64'
+    output_dir: '/teamspace/studios/this_studio/STDiffProject/out'
     logger: 'tensorboard'
     resume_ckpt: null
     stdiff_init_ckpt: null
@@ -7,17 +7,17 @@ Env:
 
 Dataset:
     name: 'KTH'
-    dir: '/home/travail/xiyex/KTH'
-    phase: 'deploy'
+    dir: '/teamspace/studios/this_studio/smol'
+    phase: 'fit'
     dev_set_size: null
     batch_size: 4
-    num_workers: 16
+    num_workers: 8
     num_channels: 3
     image_size: 64
-    num_observed_frames: 10
-    num_predict_frames: 10
-    test_num_observed_frames: 10
-    test_num_predict_frames: 10
+    num_observed_frames: 11
+    num_predict_frames: 11
+    test_num_observed_frames: 11
+    test_num_predict_frames: 11
     rand_Tp: 6
     rand_predict: True
     half_fps: False
@@ -74,7 +74,7 @@ STDiff:
                 norm: null
 
 Training:
-    use_ema: True
+    use_ema: False
     ema_inv_gamma: 1.0
     ema_power: 0.75
     ema_max_decay: 0.9999
