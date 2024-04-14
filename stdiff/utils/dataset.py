@@ -191,8 +191,7 @@ class KTHDataset(object):
     Split the KTH dataset and return the train and test dataset
     """
     def __init__(self, KTH_dir, transform, train, val,
-                 num_observed_frames, num_predict_frames, actions=['boxing', 'handclapping', 'handwaving', 'jogging_no_empty', 'running_no_empty', 'walking_no_empty'], val_person_ids = None
-                 ):
+                 num_observed_frames, num_predict_frames):
         """
         Args:
             KTH_dir --- Directory for extracted KTH video frames
@@ -212,21 +211,18 @@ class KTHDataset(object):
         self.train = train
         self.val = val
         if self.train:
-            self.person_ids = list(range(1, 17))
+            self.video_ids = list(range(25))
             if self.val:
-                if val_person_ids is None: #one person for the validation
-                    self.val_person_ids = [random.randint(1, 17)]
-                    self.person_ids.remove(self.val_person_ids[0])
-                else:
-                    self.val_person_ids = val_person_ids
+                self.val_video_ids = [random.randint(0, 16)]
+                self.video_ids.remove(self.val_video_ids[0])
         else:
-            self.person_ids = list(range(17, 26))
+            self.video_ids = list(range(16, 25))
 
-        frame_folders = self.__getFramesFolder__(self.person_ids)
+        frame_folders = self.__getFramesFolder__(self.video_ids)
         self.clips = self.__getClips__(frame_folders)
         
         if self.val:
-            val_frame_folders = self.__getFramesFolder__(self.val_person_ids)
+            val_frame_folders = self.__getFramesFolder__(self.val_video_ids)
             self.val_clips = self.__getClips__(val_frame_folders)
 
     def __call__(self):
@@ -254,26 +250,20 @@ class KTHDataset(object):
 
         return clips
     
-    def __getFramesFolder__(self, person_ids):
+    def __getFramesFolder__(self, video_ids):
         """
         Get the KTH frames folders for ClipDataset
         Returns:
-            return_folders --- ther returned video frames folders
+            return_folders --- the returned video frames folders
         """
-
-        frame_folders = []
-        for a in self.actions:
-            action_path = self.KTH_path.joinpath(a)
-            frame_folders.extend([action_path.joinpath(s) for s in os.listdir(action_path) if '.avi' not in s])
-        frame_folders = sorted(frame_folders)
+        
+        frame_folders = os.listdir(self.KTH_path)
 
         return_folders = []
         for ff in frame_folders:
-            person_id = int(str(ff.name).strip().split('_')[0][-2:])
-            if person_id in person_ids:
+            video_id = int(str(ff).strip().split('_')[1][-2:])
+            if video_id in video_ids:
                 return_folders.append(ff)
-
-        return return_folders
 
 class BAIRDataset(object):
     """
