@@ -1,5 +1,5 @@
 Env:
-    output_dir: /teamspace/studios/this_studio/out # output directory
+    output_dir: "/teamspace/studios/this_studio/out/STDiff_ckpts" # output directory
     logger: 'tensorboard'
     resume_ckpt: null
     stdiff_init_ckpt: null
@@ -7,10 +7,10 @@ Env:
 
 Dataset:
     name: 'Dataset'
-    dir: /teamspace/studios/this_studio/smol_data # path to the dataset
-    phase: 'fit'
+    dir: "/teamspace/studios/this_studio/dataset/unlabeled" # path to the dataset
+    phase: 'train'
     dev_set_size: null
-    batch_size: 4
+    batch_size: 2
     num_workers: 8
     num_channels: 3
     image_size: 64
@@ -88,9 +88,9 @@ Training:
     adam_epsilon: 1e-8
 
     epochs: 800
-    save_images_epochs: 4
-    save_model_epochs: 4
-    checkpointing_steps: 1000 #number of steps to save a resuming checkpoint
+    save_images_epochs: 40
+    save_model_epochs: 40
+    checkpointing_steps: 100 #number of steps to save a resuming checkpoint
 
     gradient_accumulation_steps: 1 #4 for 128 resolution, 4 GPU training
     mixed_precision: "no" #["no", "fp16", "bf16"],

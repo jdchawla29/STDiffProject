@@ -39,6 +39,7 @@ class LitDataModule(pl.LightningDataModule):
         p_resize = None
         vp_size = cfg.STDiff.Diffusion.unet_config.sample_size
         vo_size = cfg.STDiff.DiffNet.MotionEncoder.image_size
+
         if vp_size != self.img_size:
             p_resize = transforms.Resize(vp_size, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True)
         if vo_size != self.img_size:
@@ -46,29 +47,17 @@ class LitDataModule(pl.LightningDataModule):
         self.collate_fn = partial(svrfcn, rand_Tp=cfg.Dataset.rand_Tp, rand_predict=cfg.Dataset.rand_predict, o_resize=o_resize, p_resize=p_resize, half_fps=cfg.Dataset.half_fps)
 
     def setup(self, stage: Optional[str] = None):
-        # Assign Train/val split(s) for use in Dataloaders
-        if stage in (None, "fit"):
-            TrainData = MyDataset(self.cfg.Dataset.dir, transform = self.train_transform, train = True, 
-                                        num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
-            
-            self.train_set = TrainData()
+        Data = MyDataset(self.cfg.Dataset.dir, transform = self.train_transform, train = True, 
+                                    num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
 
-            dev_set_size = self.cfg.Dataset.dev_set_size
-            if dev_set_size is not None:
-                self.train_set, _ = random_split(self.train_set, [dev_set_size, len(self.train_set) - dev_set_size], generator=torch.Generator().manual_seed(2021))
+        self.full_dataset = Data()
 
-            self.len_train_loader = len(self.train_dataloader())
+        self.train_size = int(0.8 * len(self.full_dataset))
+        self.test_size = len(self.full_dataset) - self.train_size
 
-        # Assign Test split(s) for use in Dataloaders
-        if stage in (None, "test"):
-            TestData = MyDataset(self.cfg.Dataset.dir, transform = self.test_transform, train = False, 
-                                    num_observed_frames= self.cfg.Dataset.test_num_observed_frames, num_predict_frames= self.cfg.Dataset.test_num_predict_frames)
-            self.test_set = TestData()
-
-            dev_set_size = self.cfg.Dataset.dev_set_size
-            if dev_set_size is not None:
-                self.test_set, _ = random_split(self.test_set, [dev_set_size, len(self.test_set) - dev_set_size], generator=torch.Generator().manual_seed(2021))
-            self.len_test_loader = len(self.test_dataloader())
+        self.train_set, self.test_set = random_split(self.full_set, [train_size, test_size], generator=torch.Generator().manual_seed(2021))
+        self.len_train_loader = len(self.train_dataloader())
+        self.len_test_loader = len(self.test_dataloader())
 
     def train_dataloader(self):
         return DataLoader(self.train_set, shuffle = True, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = True, collate_fn = self.collate_fn)
@@ -86,13 +75,13 @@ class MyDataset(object):
     """
     a wrapper for ClipDataset, inspired by the original implementation of KTH dataset
     the original frame size is (H, W) = (160,240)
-    Split the dataset and return the train and test dataset
+    Return the train and test dataset
     """
     def __init__(self, dir, transform, train,
                  num_observed_frames, num_predict_frames):
         """
         Args:
-            KTH_dir --- Directory for extracted KTH video frames
+            dir --- Directory for extracted video frames
             train --- True for training dataset, False for test dataset
             transform --- torchvision transform functions
             num_observed_frames --- number of past frames
@@ -107,7 +96,7 @@ class MyDataset(object):
         self.path = Path(dir).absolute()
         self.train = train
 
-        frame_folders = [self.path.joinpath(s) for s in os.listdir(self.path)] # self.__getFramesFolder__(self.video_ids)
+        frame_folders = [self.path.joinpath(s) for s in os.listdir(self.path)]
         self.clips = self.__getClips__(frame_folders)
 
     def __call__(self):
@@ -122,7 +111,8 @@ class MyDataset(object):
     def __getClips__(self, frame_folders):
         clips = []
         for folder in frame_folders:
-            img_files = sorted(list(folder.glob('*')))
+            key = lambda path:int(''.join(filter(str.isdigit,str(path).split("/")[-1])))
+            img_files = sorted(list(folder.glob('*.png')),key=key)
             clip_num = len(img_files) // self.clip_length
             rem_num = len(img_files) % self.clip_length
             img_files = img_files[rem_num // 2 : rem_num//2 + clip_num*self.clip_length]
@@ -131,18 +121,18 @@ class MyDataset(object):
 
         return clips
     
-    def __getFramesFolder__(self, video_ids):
-        """
-        Get the frames folders for ClipDataset
-        Returns:
-            return_folders --- the returned video frames folders
-        """
+    # def __getFramesFolder__(self):
+    #     """
+    #     Get the frames folders for ClipDataset
+    #     Returns:
+    #         return_folders --- the returned video frames folders
+    #     """
 
-        return_folders = []
-        for ff in frame_folders:
-            return_folders.append(ff)
+    #     return_folders = []
+    #     for ff in frame_folders:
+    #         return_folders.append(ff)
         
-        return return_folders
+    #     return return_folders
     
 class ClipDataset(Dataset):
     """
