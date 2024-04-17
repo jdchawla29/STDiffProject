@@ -55,7 +55,7 @@ class LitDataModule(pl.LightningDataModule):
         self.train_size = int(0.8 * len(self.full_dataset))
         self.test_size = len(self.full_dataset) - self.train_size
 
-        self.train_set, self.test_set = random_split(self.full_set, [train_size, test_size], generator=torch.Generator().manual_seed(2021))
+        self.train_set, self.test_set = random_split(self.full_dataset, [self.train_size, self.test_size], generator=torch.Generator().manual_seed(2021))
         self.len_train_loader = len(self.train_dataloader())
         self.len_test_loader = len(self.test_dataloader())
 

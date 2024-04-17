@@ -64,7 +64,7 @@ def main(cfg : DictConfig) -> None:
 
     accelerator = Accelerator(
         gradient_accumulation_steps=cfg.Training.gradient_accumulation_steps,
-        mixed_precision=cfg.Training.mixed_precision,
+        mixed_precision="no",
         log_with=cfg.Env.logger,
         logging_dir=logging_dir,
         project_config=accelerator_project_config,
@@ -76,11 +76,9 @@ def main(cfg : DictConfig) -> None:
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
-            if cfg.Training.use_ema:
-                ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
-
             for i, model in enumerate(models):
                 model.save_pretrained(os.path.join(output_dir, "unet"))
 
@@ -88,12 +86,6 @@ def main(cfg : DictConfig) -> None:
                 weights.pop()
 
         def load_model_hook(models, input_dir):
-            if cfg.Training.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), STDiffDiffusers)
-                ema_model.load_state_dict(load_model.state_dict())
-                ema_model.to(accelerator.device)
-                del load_model
-
             for i in range(len(models)):
                 # pop models so that they are not loaded again
                 model = models.pop()
@@ -134,60 +126,34 @@ def main(cfg : DictConfig) -> None:
         model = STDiffDiffusers.from_pretrained(cfg.Env.stdiff_init_ckpt, subfolder='unet')
         print('Init from a checkpoint')
 
-    # Create EMA for the model.
-    if cfg.Training.use_ema:
-        ema_model = EMAModel(
-            model.parameters(),
-            decay=cfg.Training.ema_max_decay,
-            use_ema_warmup=True,
-            inv_gamma=cfg.Training.ema_inv_gamma,
-            power=cfg.Training.ema_power,
-            model_cls=STDiffDiffusers,
-            model_config=model.config,
-        )
-
     # Initialize the scheduler
-    accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
-    if accepts_prediction_type:
-        noise_scheduler = DDPMScheduler(
-            num_train_timesteps=cfg.STDiff.Diffusion.ddpm_num_steps,
-            beta_schedule=cfg.STDiff.Diffusion.ddpm_beta_schedule,
-            prediction_type=cfg.STDiff.Diffusion.prediction_type,
-        )
-    else:
-        noise_scheduler = DDPMScheduler(num_train_timesteps=cfg.STDiff.Diffusion.ddpm_num_steps, beta_schedule=cfg.STDiff.Diffusion.ddpm_beta_schedule)
+    noise_scheduler = DDPMScheduler(num_train_timesteps=1000, beta_schedule='linear')
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=cfg.Training.learning_rate,
-        betas=cfg.Training.adam_betas,
-        weight_decay=cfg.Training.adam_weight_decay,
-        eps=cfg.Training.adam_epsilon,
+        lr=1e-4,
+        betas=[0.95, 0.999],
+        weight_decay=1e-6,
+        eps=1e-8,
     )
-
-    # Get the datasets: you can either provide your own training and evaluation files (see below)
-    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
 
     # Preprocessing the datasets and DataLoaders creation.
     train_dataloader, _ = get_lightning_module_dataloader(cfg)
 
     # Initialize the learning rate scheduler
     lr_scheduler = get_scheduler(
-        cfg.Training.lr_scheduler,
+        'cosine_with_restarts',
         optimizer=optimizer,
-        num_warmup_steps=cfg.Training.lr_warmup_steps * cfg.Training.gradient_accumulation_steps,
+        num_warmup_steps=500 * cfg.Training.gradient_accumulation_steps,
         num_training_steps=len(train_dataloader) * cfg.Training.epochs,
-        num_cycles=cfg.Training.num_cycles,
+        num_cycles=2,
     )
 
     # Prepare everything with our `accelerator`.
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
-
-    if cfg.Training.use_ema:
-        ema_model.to(accelerator.device)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
@@ -261,19 +227,7 @@ def main(cfg : DictConfig) -> None:
                 # Predict the noise residual
                 model_output = model(Vo, idx_o, idx_p, noisy_images, timesteps, Vp, Vo_last_frame).sample
 
-                if cfg.STDiff.Diffusion.prediction_type == "epsilon":
-                    loss = F.l1_loss(model_output, noise)  # this could have different weights!
-                elif cfg.STDiff.Diffusion.prediction_type == "sample":
-                    alpha_t = _extract_into_tensor(
-                        noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
-                    )
-                    snr_weights = alpha_t / (1 - alpha_t)
-                    loss = snr_weights * F.l1_loss(
-                        model_output, clean_images, reduction="none"
-                    )  # use SNR weighting from distillation paper
-                    loss = loss.mean()
-                else:
-                    raise ValueError(f"Unsupported prediction type: {cfg.STDiff.Diffusion.prediction_type}")
+                loss = F.l1_loss(model_output, noise)
 
                 accelerator.backward(loss)
 
@@ -285,8 +239,6 @@ def main(cfg : DictConfig) -> None:
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
-                if cfg.Training.use_ema:
-                    ema_model.step(model.parameters())
                 progress_bar.update(1)
                 global_step += 1
 
@@ -297,8 +249,7 @@ def main(cfg : DictConfig) -> None:
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
-            if cfg.Training.use_ema:
-                logs["ema_decay"] = ema_model.cur_decay_value
+
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
         progress_bar.close()
@@ -309,10 +260,6 @@ def main(cfg : DictConfig) -> None:
         if accelerator.is_main_process:
             if epoch % cfg.Training.save_images_epochs == 0 or epoch == cfg.Training.epochs - 1:
                 unet = accelerator.unwrap_model(model)
-
-                if cfg.Training.use_ema:
-                    ema_model.store(unet.parameters())
-                    ema_model.copy_to(unet.parameters())
 
                 pipeline = STDiffPipeline(
                     stdiff=unet,
@@ -332,9 +279,6 @@ def main(cfg : DictConfig) -> None:
                     output_type="numpy"
                 ).images
 
-                if cfg.Training.use_ema:
-                    ema_model.restore(unet.parameters())
-
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
 
@@ -344,31 +288,16 @@ def main(cfg : DictConfig) -> None:
                     else:
                         tracker = accelerator.get_tracker("tensorboard")
                     tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
-                elif cfg.Env.logger == "wandb":
-                    # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
-                    accelerator.get_tracker("wandb").log(
-                        {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
-                        step=global_step,
-                    )
 
             if epoch % cfg.Training.save_model_epochs == 0 or epoch == cfg.Training.epochs - 1:
                 # save the model
                 unet = accelerator.unwrap_model(model)
 
-                if cfg.Training.use_ema:
-                    ema_model.store(unet.parameters())
-                    ema_model.copy_to(unet.parameters())
-
                 pipeline = STDiffPipeline(
                     stdiff=unet,
                     scheduler=noise_scheduler
                 )
-
                 pipeline.save_pretrained(cfg.Env.output_dir)
-
-                if cfg.Training.use_ema:
-                    ema_model.restore(unet.parameters())
-
     accelerator.end_training()
 
 if __name__ == '__main__':

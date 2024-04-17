@@ -42,12 +42,7 @@ def main(cfg : DictConfig) -> None:
     print('Number of parameters is: ', num_params)
 
     #init scheduler
-    if cfg.TestCfg.scheduler.name == 'DDPM':
-        scheduler = DDPMScheduler.from_pretrained(ckpt_path, subfolder = 'scheduler')
-    elif cfg.TestCfg.scheduler.name == 'DPMMS':
-        scheduler = DPMSolverMultistepScheduler.from_pretrained(ckpt_path, subfolder="scheduler", solver_order=3)
-    else:
-        raise NotImplementedError("Scheduler is not supported")
+    scheduler = DDPMScheduler.from_pretrained(ckpt_path, subfolder = 'scheduler')
 
     stdiff_pipeline = STDiffPipeline(stdiff, scheduler).to(device)
     if not accelerator.is_main_process:
@@ -55,21 +50,10 @@ def main(cfg : DictConfig) -> None:
     _, test_loader = get_lightning_module_dataloader(cfg)
     stdiff_pipeline, test_loader = accelerator.prepare(stdiff_pipeline, test_loader)
 
-    To = cfg.Dataset.test_num_observed_frames
-    assert To == cfg.Dataset.num_observed_frames, 'invalid configuration'
-    Tp = cfg.Dataset.test_num_predict_frames
-    idx_o = torch.linspace(0, To-1 , To).to(device)
-    if cfg.TestCfg.fps == 1:
-        idx_p = torch.linspace(To, cfg.Dataset.num_predict_frames+To-1, cfg.Dataset.num_predict_frames).to(device)
-    elif cfg.TestCfg.fps == 2:
-        idx_p = torch.linspace(To, cfg.Dataset.num_predict_frames+To-1, 2*cfg.Dataset.num_predict_frames-1).to(device)
-    #steps = cfg.TestCfg.fps*(cfg.Dataset.num_predict_frames-1) + 1
-    #idx_p = torch.linspace(To, cfg.Dataset.num_predict_frames+To-1, steps).to(device)
-
-    autoreg_iter = cfg.Dataset.test_num_predict_frames // cfg.Dataset.num_predict_frames
-    autoreg_rem = cfg.Dataset.test_num_predict_frames % cfg.Dataset.num_predict_frames
-    if autoreg_rem > 0:
-        autoreg_iter = autoreg_iter + 1
+    To = 11
+    Tp = 11
+    idx_o = torch.linspace(0, 10 , 11).to(device)
+    idx_p = torch.linspace(11, 21, 11).to(device)
 
     if accelerator.is_main_process:
         print('idx_o', idx_o)
@@ -98,28 +82,17 @@ def main(cfg : DictConfig) -> None:
                 Vo, Vp, Vo_last_frame, _, _ = batch
 
                 preds = []
-                if cfg.TestCfg.random_predict.first_pred_sample_num >= 2:
-                    filter_first_out = stdiff_pipeline.filter_best_first_pred(cfg.TestCfg.random_predict.first_pred_sample_num, Vo.clone(), 
+                filter_first_out = stdiff_pipeline.filter_best_first_pred(10, Vo.clone(), 
                                                                             Vo_last_frame, Vp[:, 0:1, ...], idx_o, idx_p, 
-                                                                            num_inference_steps = cfg.TestCfg.scheduler.sample_steps,
-                                                                            fix_init_noise=cfg.TestCfg.random_predict.fix_init_noise,
-                                                                            bs = cfg.TestCfg.random_predict.first_pred_parralle_bs)
-                for i in range(cfg.TestCfg.random_predict.sample_num):
+                                                                            num_inference_steps = 100,
+                                                                            fix_init_noise=False,
+                                                                            bs = 4)
+                for i in range(10):
                     pred_clip = []
                     Vo_input = Vo.clone()
-                    for j in range(autoreg_iter):
-                        if j == 0 and cfg.TestCfg.random_predict.first_pred_sample_num >= 2:
-                            temp_pred = stdiff_pipeline.pred_remainig_frames(*(filter_first_out + (cfg.TestCfg.random_predict.fix_init_noise,"pil", False)))
-                        else:
-                            temp_pred = stdiff_pipeline(Vo_input, Vo_last_frame, idx_o, idx_p, num_inference_steps = cfg.TestCfg.scheduler.sample_steps,
-                                                    to_cpu=False, fix_init_noise=cfg.TestCfg.random_predict.fix_init_noise) #Torch Tensor (N, Tp, C, H, W), range (0, 1)
-                        pred_clip.append(temp_pred)
-                        Vo_input = temp_pred[:, -To:, ...]*2. - 1.
-                        Vo_last_frame = temp_pred[:, -1:, ...]*2. -1.
-
-                    pred_clip = torch.cat(pred_clip, dim = 1)
-                    if autoreg_rem > 0:
-                        pred_clip = pred_clip[:, 0:(autoreg_rem - cfg.Dataset.num_predict_frames), ...]
+                    pred_clip = stdiff_pipeline.pred_remainig_frames(*(filter_first_out + (False, "pil", False)))
+                    Vo_input = pred_clip[:, -To:, ...]*2. - 1.
+                    Vo_last_frame = pred_clip[:, -1:, ...]*2. -1.
                     preds.append(pred_clip)
                     
                 preds = torch.stack(preds, 0) #(sample_num, N, Tp, C, H, W)
@@ -135,18 +108,16 @@ def main(cfg : DictConfig) -> None:
                     dump_obj = {'Vo': g_Vo.detach().cpu(), 'g_Vp': g_Vp.detach().cpu(), 'g_Preds': g_preds.detach().cpu()}
                     torch.save(dump_obj, f=Path(r_save_path).joinpath(f'Preds_{idx}.pt'))
                     progress_bar.update(1)
-                    for i  in range(min(cfg.TestCfg.random_predict.sample_num, 4)):
+                    for i in range(10):
                         visualize_batch_clips(Vo, Vp, preds[:, i, ...], file_dir=Path(r_save_path).joinpath(f'test_examples_{idx}_traj{i}'))
 
                     del g_Vo
                     del g_Vp
                     del g_preds
     print("Inference finished")
-    print("Start evaluation metrics")
 if __name__ == '__main__':
     config_path = Path(parse_args())
     initialize(version_base=None, config_path=str(config_path.parent))
     cfg = compose(config_name=str(config_path.name))
 
     main(cfg)
-    eval_metrics(cfg)

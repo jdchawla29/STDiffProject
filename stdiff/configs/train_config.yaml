@@ -4,10 +4,9 @@ Env:
     resume_ckpt: null
     stdiff_init_ckpt: null
     
-
 Dataset:
-    name: 'Dataset'
-    dir: "/teamspace/studios/this_studio/dataset/unlabeled" # path to the dataset
+    name: 'Object-Data'
+    dir: '/teamspace/studios/this_studio/dataset/unlabeled' # path to the dataset
     phase: 'train'
     dev_set_size: null
     batch_size: 2
@@ -24,7 +23,6 @@ Dataset:
 
 STDiff:
     Diffusion:
-        prediction_type: 'epsilon' #'epsilon' or 'sample'
         ddpm_num_steps: 1000
         ddpm_num_inference_steps: 100
         ddpm_beta_schedule: 'linear'
@@ -79,18 +77,9 @@ Training:
     ema_power: 0.75
     ema_max_decay: 0.9999
 
-    learning_rate: 1e-4
-    lr_scheduler: 'cosine_with_restarts'
-    lr_warmup_steps: 500
-    num_cycles: 2
-    adam_betas: [0.95, 0.999]
-    adam_weight_decay: 1e-6
-    adam_epsilon: 1e-8
-
     epochs: 800
-    save_images_epochs: 40
-    save_model_epochs: 40
-    checkpointing_steps: 100 #number of steps to save a resuming checkpoint
+    save_images_epochs: 4
+    save_model_epochs: 4
+    checkpointing_steps: 250 #number of steps to save a resuming checkpoint
 
     gradient_accumulation_steps: 1 #4 for 128 resolution, 4 GPU training
-    mixed_precision: "no" #["no", "fp16", "bf16"],
