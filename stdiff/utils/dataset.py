@@ -32,7 +32,7 @@ class LitDataModule(pl.LightningDataModule):
 
         self.norm_transform = lambda x: x * 2. - 1.
 
-        self.train_transform = transforms.Compose([VidCenterCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
+        self.train_transform = transforms.Compose([VidRandomCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
         self.test_transform = transforms.Compose([VidCenterCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
         
         o_resize = None
@@ -50,14 +50,17 @@ class LitDataModule(pl.LightningDataModule):
         Data = MyDataset(self.cfg.Dataset.dir, transform = self.train_transform, train = True, 
                                     num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
 
-        self.full_dataset = Data()
+        if stage == "train":
+            self.train_set = Data()
+            self.test_set = None
+            self.len_train_loader = len(self.train_dataloader())
+            self.len_test_loader = len(self.test_dataloader())
 
-        self.train_size = int(0.8 * len(self.full_dataset))
-        self.test_size = len(self.full_dataset) - self.train_size
-
-        self.train_set, self.test_set = random_split(self.full_dataset, [self.train_size, self.test_size], generator=torch.Generator().manual_seed(2021))
-        self.len_train_loader = len(self.train_dataloader())
-        self.len_test_loader = len(self.test_dataloader())
+        if stage == "test":
+            self.train_set = None
+            self.test_set = Data()
+            self.len_train_loader = len(self.train_dataloader())
+            self.len_test_loader = len(self.test_dataloader())
 
     def train_dataloader(self):
         return DataLoader(self.train_set, shuffle = True, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = True, collate_fn = self.collate_fn)
@@ -277,6 +280,17 @@ class VidCenterCrop(object):
     def __call__(self, clip: List[Image.Image]):
         for i in range(len(clip)):
             clip[i] = transforms.CenterCrop(*self.args, **self.kwargs)(clip[i])
+
+        return clip
+
+class VidRandomCrop(object):
+    def __init__(self, *args, **kwargs):
+        self.kwargs = kwargs
+        self.args = args
+
+    def __call__(self, clip: List[Image.Image]):
+        for i in range(len(clip)):
+            clip[i] = transforms.RandomCrop(*self.args, **self.kwargs)(clip[i])
 
         return clip
 

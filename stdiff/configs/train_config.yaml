@@ -9,10 +9,10 @@ Dataset:
     dir: '/teamspace/studios/this_studio/dataset/unlabeled' # path to the dataset
     phase: 'train'
     dev_set_size: null
-    batch_size: 2
+    batch_size: 4
     num_workers: 8
     num_channels: 3
-    image_size: 64
+    image_size: 128
     num_observed_frames: 11
     num_predict_frames: 11
     test_num_observed_frames: 11
@@ -28,31 +28,31 @@ STDiff:
         ddpm_beta_schedule: 'linear'
 
         unet_config:
-            sample_size: 64
+            sample_size: 128
             in_channels: 6
             out_channels: 3
             m_channels: 256
             layers_per_block: 2
             #config for resolution 128
-            #block_out_channels: [256, 256, 512, 768, 1024]
-            #down_block_types: ["DownBlock2D","DownBlock2D","DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-            #up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D","UpBlock2D", "UpBlock2D", "UpBlock2D"]
-            #attention_head_dim: [null, null, null, 192, 256]
+            block_out_channels: [256, 256, 512, 768, 1024]
+            down_block_types: ["DownBlock2D","DownBlock2D","DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
+            up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D","UpBlock2D", "UpBlock2D", "UpBlock2D"]
+            attention_head_dim: [null, null, null, 192, 256]
             
             #config for resolution 64
-            block_out_channels: [128, 256, 256, 512, 512]
-            down_block_types: ["DownBlock2D","AttnDownBlock2D","AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-            up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D","AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
-            attention_head_dim: [null, 128, 128, 128, 128]
+            # block_out_channels: [128, 256, 256, 512, 512]
+            # down_block_types: ["DownBlock2D","AttnDownBlock2D","AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
+            # up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D","AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+            # attention_head_dim: [null, 128, 128, 128, 128]
 
     DiffNet:
         autoregressive: True
         super_res_training: False
         MotionEncoder:
             learn_diff_image: True
-            image_size: 64
+            image_size: 128
             in_channels: 3
-            model_channels: 64
+            model_channels: 128
             n_downs: 2
         DiffUnet:
             n_layers: 2
@@ -72,14 +72,9 @@ STDiff:
                 norm: null
 
 Training:
-    use_ema: False
-    ema_inv_gamma: 1.0
-    ema_power: 0.75
-    ema_max_decay: 0.9999
-
-    epochs: 800
+    epochs: 60
     save_images_epochs: 4
     save_model_epochs: 4
     checkpointing_steps: 250 #number of steps to save a resuming checkpoint
 
-    gradient_accumulation_steps: 1 #4 for 128 resolution, 4 GPU training
+    gradient_accumulation_steps: 4 #4 for 128 resolution, 4 GPU training
