@@ -306,4 +306,3 @@ if __name__ == '__main__':
     cfg = compose(config_name=str(config_path.name))
 
     main(cfg)
-    main()

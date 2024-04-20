@@ -32,8 +32,8 @@ class LitDataModule(pl.LightningDataModule):
 
         self.norm_transform = lambda x: x * 2. - 1.
 
-        self.train_transform = transforms.Compose([VidRandomCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor(), self.norm_transform])
-        self.test_transform = transforms.Compose([VidCenterCrop((120, 120)), VidResize((self.img_size, self.img_size)), VidToTensor(), self.norm_transform])
+        self.train_transform = transforms.Compose([VidPad((0,40,0,40)), VidResize((self.img_size,self.img_size)), VidToTensor(), self.norm_transform])
+        self.test_transform = transforms.Compose([VidPad((0,40,0,40)), VidResize((self.img_size,self.img_size)), VidToTensor(), self.norm_transform])
         
         o_resize = None
         p_resize = None
@@ -44,29 +44,31 @@ class LitDataModule(pl.LightningDataModule):
             p_resize = transforms.Resize(vp_size, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True)
         if vo_size != self.img_size:
             o_resize = transforms.Resize(vo_size, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True)
-        self.collate_fn = partial(svrfcn, rand_Tp=cfg.Dataset.rand_Tp, rand_predict=cfg.Dataset.rand_predict, o_resize=o_resize, p_resize=p_resize, half_fps=cfg.Dataset.half_fps)
 
-    def setup(self, stage: Optional[str] = None):
-        Data = MyDataset(self.cfg.Dataset.dir, transform = self.train_transform, train = True, 
-                                    num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
+        self.collate_fn = partial(svrfcn, rand_Tp=cfg.Dataset.rand_Tp, rand_predict=cfg.Dataset.rand_predict, o_resize=o_resize, p_resize=p_resize)
 
-        if stage == "train":
+    def setup(self):
+        if self.cfg.Dataset.train:
+            Data = MyDataset(self.cfg.Dataset.dir, transform = self.train_transform, num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
             self.train_set = Data()
             self.test_set = None
-            self.len_train_loader = len(self.train_dataloader())
-            self.len_test_loader = len(self.test_dataloader())
 
-        if stage == "test":
+        else:
+            Data = MyDataset(self.cfg.Dataset.dir, transform = self.test_transform, num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
             self.train_set = None
             self.test_set = Data()
-            self.len_train_loader = len(self.train_dataloader())
-            self.len_test_loader = len(self.test_dataloader())
 
     def train_dataloader(self):
-        return DataLoader(self.train_set, shuffle = True, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = True, collate_fn = self.collate_fn)
+        if self.train_set is None: 
+            return None
+        else:
+            return DataLoader(self.train_set, shuffle = True, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = True, collate_fn = self.collate_fn)
 
     def test_dataloader(self):
-        return DataLoader(self.test_set, shuffle = False, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = False, collate_fn = self.collate_fn)
+        if self.test_set is None:
+            return None
+        else:
+            return DataLoader(self.test_set, shuffle = False, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = False, collate_fn = self.collate_fn)
 
 
 def get_lightning_module_dataloader(cfg):
@@ -80,12 +82,11 @@ class MyDataset(object):
     the original frame size is (H, W) = (160,240)
     Return the train and test dataset
     """
-    def __init__(self, dir, transform, train,
+    def __init__(self, dir, transform,
                  num_observed_frames, num_predict_frames):
         """
         Args:
             dir --- Directory for extracted video frames
-            train --- True for training dataset, False for test dataset
             transform --- torchvision transform functions
             num_observed_frames --- number of past frames
             num_predict_frames --- number of future frames
@@ -94,10 +95,8 @@ class MyDataset(object):
         self.num_predict_frames = num_predict_frames
         self.clip_length = num_observed_frames + num_predict_frames
         self.transform = transform
-        self.color_mode = 'RGB'
 
         self.path = Path(dir).absolute()
-        self.train = train
 
         frame_folders = [self.path.joinpath(s) for s in os.listdir(self.path)]
         self.clips = self.__getClips__(frame_folders)
@@ -107,7 +106,7 @@ class MyDataset(object):
         Returns:
             clip_set --- ClipDataset object
         """
-        clip_set = ClipDataset(self.num_observed_frames, self.num_predict_frames, self.clips, self.transform, self.color_mode)
+        clip_set = ClipDataset(self.num_observed_frames, self.num_predict_frames, self.clips, self.transform)
            
         return clip_set
     
@@ -124,31 +123,17 @@ class MyDataset(object):
 
         return clips
     
-    # def __getFramesFolder__(self):
-    #     """
-    #     Get the frames folders for ClipDataset
-    #     Returns:
-    #         return_folders --- the returned video frames folders
-    #     """
-
-    #     return_folders = []
-    #     for ff in frame_folders:
-    #         return_folders.append(ff)
-        
-    #     return return_folders
-    
 class ClipDataset(Dataset):
     """
     Video clips dataset
     """
-    def __init__(self, num_observed_frames, num_predict_frames, clips, transform, color_mode):
+    def __init__(self, num_observed_frames, num_predict_frames, clips, transform):
         """
         Args:
             num_observed_frames --- number of past frames
             num_predict_frames --- number of future frames
             clips --- List of video clips frames file path
             transform --- torchvision transforms for the image
-            color_mode --- 'RGB' for RGB dataset, 'grey_scale' for grey_scale dataset
 
         Return batched Sample:
             past_clip --- Tensor with shape (batch_size, num_observed_frames, C, H, W)
@@ -158,10 +143,6 @@ class ClipDataset(Dataset):
         self.num_predict_frames = num_predict_frames
         self.clips = clips
         self.transform = transform
-        if color_mode != 'RGB' and color_mode != 'grey_scale':
-            raise ValueError("Unsupported color mode!!")
-        else:
-            self.color_mode = color_mode
 
     def __len__(self):
         return len(self.clips)
@@ -178,10 +159,7 @@ class ClipDataset(Dataset):
         clip_imgs = self.clips[index]
         imgs = []
         for img_path in clip_imgs:
-            if self.color_mode == 'RGB':
-                img = Image.open(img_path.absolute().as_posix()).convert('RGB')
-            else:
-                img = Image.open(img_path.absolute().as_posix()).convert('L')
+            img = Image.open(img_path.absolute().as_posix()).convert('RGB')
             imgs.append(img)
         
         original_clip = self.transform(imgs)
@@ -210,7 +188,7 @@ class ClipDataset(Dataset):
         #imgs[0].save(str(Path(file_name).absolute()), save_all = True, append_images = imgs[1:])
 
 
-def svrfcn(batch_data, rand_Tp = 3, rand_predict = True, o_resize = None, p_resize = None, half_fps = False):
+def svrfcn(batch_data, rand_Tp = 1, rand_predict = True, o_resize = None, p_resize = None):
     """
     Single video dataset random future frames collate function
     batch_data: list of tuples, each tuple is (observe_clip, predict_clip)
@@ -234,15 +212,6 @@ def svrfcn(batch_data, rand_Tp = 3, rand_predict = True, o_resize = None, p_resi
         rand_predict_batch = predict_batch
     To = observe_batch.shape[1]
     idx_o = torch.linspace(0, To-1 , To, dtype = torch.int)
-
-    if half_fps:
-        if observe_batch.shape[1] > 2:
-            observe_batch = observe_batch[:, ::2, ...]
-            idx_o = idx_o[::2, ...]
-
-        rand_predict_batch = rand_predict_batch[:, ::2, ...]
-        rand_idx = rand_idx[::2, ...]
-        observe_last_batch = observe_batch[:, -1:, ...]
 
     if p_resize is not None:
         N, T, _, _, _ = rand_predict_batch.shape
@@ -272,17 +241,6 @@ class VidResize(object):
 
         return clip
 
-class VidCenterCrop(object):
-    def __init__(self, *args, **kwargs):
-        self.kwargs = kwargs
-        self.args = args
-
-    def __call__(self, clip: List[Image.Image]):
-        for i in range(len(clip)):
-            clip[i] = transforms.CenterCrop(*self.args, **self.kwargs)(clip[i])
-
-        return clip
-
 class VidRandomCrop(object):
     def __init__(self, *args, **kwargs):
         self.kwargs = kwargs
@@ -294,14 +252,14 @@ class VidRandomCrop(object):
 
         return clip
 
-class VidCrop(object):
+class VidCenterCrop(object):
     def __init__(self, *args, **kwargs):
         self.kwargs = kwargs
         self.args = args
 
     def __call__(self, clip: List[Image.Image]):
         for i in range(len(clip)):
-            clip[i] = transforms.functional.crop(clip[i], *self.args, **self.kwargs)
+            clip[i] = transforms.CenterCrop(*self.args, **self.kwargs)(clip[i])
 
         return clip
         
@@ -461,7 +419,8 @@ def get_data_inverse_scaler(config):
   else:
     return lambda x: x
 
-def visualize_batch_clips(gt_past_frames_batch, gt_future_frames_batch, pred_frames_batch, file_dir, renorm_transform = None, desc = None):
+def visualize_batch_clips(gt_past_frames_batch, gt_future_frames_batch, pred_frames_batch, file_dir, idx, renorm_transform = None, desc = None):
+
     """
         pred_frames_batch: tensor with shape (N, future_clip_length, C, H, W)
         gt_future_frames_batch: tensor with shape (N, future_clip_length, C, H, W)
@@ -495,8 +454,27 @@ def visualize_batch_clips(gt_past_frames_batch, gt_future_frames_batch, pred_fra
 
     batch = torch.cat([gt_past_frames_batch, gt_future_frames_batch, pred_frames_batch], dim = -1) #shape (N, clip_length, C, H, 3W)
     batch = batch.cpu()
+
     N = batch.shape[0]
     for n in range(N):
         clip = batch[n, ...]
         file_name = file_dir.joinpath(f'{desc}_clip_{n}.gif')
-        save_clip(clip, file_name)
+
+        imgs = []
+        if renorm_transform is not None:
+            clip = renorm_transform(clip)
+            clip = torch.clamp(clip, min = 0., max = 1.0)
+
+        for i in range(clip.shape[0]):
+            img = transforms.ToPILImage()(clip[i, ...])
+            imgs.append(img)
+        
+        imgs[0].save(str(Path(file_name).absolute()), save_all = True, append_images = imgs[1:], loop = 0)
+
+        last_frame = pred_frames_batch[n, -1, ...] # last frame of the clip in this batch
+
+        last_frame = transforms.ToPILImage()(last_frame)
+        img_name = str(Path(file_dir.absolute()))+f'_{idx}_{n}.png'
+        last_frame.save(img_name)
+
+

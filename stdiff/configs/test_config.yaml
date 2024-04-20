@@ -1,9 +1,8 @@
 Dataset:
-    name: 'Dataset'
+    name: 'Object-Data'
     dir: '/teamspace/studios/this_studio/dataset/unlabeled'
-    phase: 'deploy'
-    dev_set_size: null
-    batch_size: 1
+    train: False
+    batch_size: 2
     num_workers: 8
     num_channels: 3
     image_size: 64
@@ -13,7 +12,6 @@ Dataset:
     test_num_predict_frames: 11
     rand_Tp: null
     rand_predict: False
-    half_fps: False
 
 STDiff:
     Diffusion:
@@ -24,10 +22,9 @@ STDiff:
             image_size: 64
 
 TestCfg:
-    ckpt_path: '/teamspace/studios/this_studio/out/STDiff_ckpts/'
-    test_results_path: '/teamspace/studios/this_studio/out/STDiff_ckpts/test'
+    ckpt_path: '/teamspace/studios/this_studio/stdiff_80_epochs/'
+    test_results_path: '/teamspace/studios/this_studio/out/test'
     scheduler: 
         sample_steps: 100
 
-    metrics: ['PSNR', 'SSIM', 'LPIPS', 'InterLPIPS']
         

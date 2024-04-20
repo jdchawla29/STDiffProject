@@ -13,7 +13,7 @@ from hydra import compose, initialize
 from omegaconf import DictConfig, omegaconf
 from einops import rearrange
 
-from utils import visualize_batch_clips, eval_metrics
+from utils import visualize_batch_clips
 from pathlib import Path
 import argparse
 from models import STDiffPipeline, STDiffDiffusers
@@ -81,39 +81,32 @@ def main(cfg : DictConfig) -> None:
             if idx > resume_batch_idx: #resume test
                 Vo, Vp, Vo_last_frame, _, _ = batch
 
-                preds = []
                 filter_first_out = stdiff_pipeline.filter_best_first_pred(10, Vo.clone(), 
                                                                             Vo_last_frame, Vp[:, 0:1, ...], idx_o, idx_p, 
                                                                             num_inference_steps = 100,
                                                                             fix_init_noise=False,
                                                                             bs = 4)
-                for i in range(10):
-                    pred_clip = []
-                    Vo_input = Vo.clone()
-                    pred_clip = stdiff_pipeline.pred_remainig_frames(*(filter_first_out + (False, "pil", False)))
-                    Vo_input = pred_clip[:, -To:, ...]*2. - 1.
-                    Vo_last_frame = pred_clip[:, -1:, ...]*2. -1.
-                    preds.append(pred_clip)
-                    
-                preds = torch.stack(preds, 0) #(sample_num, N, Tp, C, H, W)
-                preds = preds.permute(1, 0, 2, 3, 4, 5).contiguous() #(N, sample_num, num_predict_frames, C, H, W)
+                Vo_input = Vo.clone()
+                pred_clip = stdiff_pipeline.pred_remainig_frames(*(filter_first_out + (False, "pil", False)))
+                Vo_input = pred_clip[:, -To:, ...]*2. - 1.
+                Vo_last_frame = pred_clip[:, -1:, ...]*2. -1.
+
                 Vo = (Vo / 2 + 0.5).clamp(0, 1)
                 Vp = (Vp / 2 + 0.5).clamp(0, 1)
 
-                g_preds = accelerator.gather(preds)
+                g_pred = accelerator.gather(pred_clip)
                 g_Vo = accelerator.gather(Vo)
                 g_Vp = accelerator.gather(Vp)
 
                 if accelerator.is_main_process:
-                    dump_obj = {'Vo': g_Vo.detach().cpu(), 'g_Vp': g_Vp.detach().cpu(), 'g_Preds': g_preds.detach().cpu()}
-                    torch.save(dump_obj, f=Path(r_save_path).joinpath(f'Preds_{idx}.pt'))
+                    dump_obj = {'Vo': g_Vo.detach().cpu(), 'g_Vp': g_Vp.detach().cpu(), 'g_Pred': g_pred.detach().cpu()}
+                    torch.save(dump_obj, f=Path(r_save_path).joinpath(f'Pred_{idx}.pt'))
                     progress_bar.update(1)
-                    for i in range(10):
-                        visualize_batch_clips(Vo, Vp, preds[:, i, ...], file_dir=Path(r_save_path).joinpath(f'test_examples_{idx}_traj{i}'))
+                    visualize_batch_clips(Vo, Vp, pred_clip, file_dir=Path(r_save_path),idx=idx)
 
                     del g_Vo
                     del g_Vp
-                    del g_preds
+                    del g_pred
     print("Inference finished")
 if __name__ == '__main__':
     config_path = Path(parse_args())
