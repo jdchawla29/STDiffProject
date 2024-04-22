@@ -1,23 +1,23 @@
 Env:
-    output_dir: "/teamspace/studios/this_studio/out/STDiff_ckpts" # output directory
+    output_dir: '' # output directory
     logger: 'tensorboard'
-    resume_ckpt: "/teamspace/studios/this_studio/out/STDiff_ckpts"
-    stdiff_init_ckpt: "/teamspace/studios/this_studio/out/STDiff_ckpts/st_diff"
+    resume_ckpt: null
+    stdiff_init_ckpt: null
     
 Dataset:
     name: 'Object-Data'
-    dir: '/teamspace/studios/this_studio/dataset/unlabeled' # path to the dataset
-    train: True
-    batch_size: 10
+    dir: '' # path to the dataset
+    stage: 'train' # 'train' or 'inference'
+    batch_size: 1
     num_workers: 8
     num_channels: 3
     image_size: 64
     num_observed_frames: 11
     num_predict_frames: 11
     test_num_observed_frames: 11
-    test_num_predict_frames: 11
-    rand_Tp: 1
-    rand_predict: True
+    test_num_predict_frames: 11 # 0 for prediction
+    rand_Tp: null
+    rand_predict: False
 
 STDiff:
     Diffusion:
@@ -73,6 +73,12 @@ Training:
     epochs: 60
     save_images_epochs: 4
     save_model_epochs: 4
-    checkpointing_steps: 100 #number of steps to save a resuming checkpoint
+    checkpointing_steps: 100 # number of steps to save a resuming checkpoint
 
-    gradient_accumulation_steps: 4 #4 for 128 resolution, 4 GPU training
+    gradient_accumulation_steps: 4 # 4 for 128 resolution, 4 GPU training
+
+TestCfg:
+    ckpt_path: ''
+    test_results_path: ''
+    scheduler: 
+        sample_steps: 100

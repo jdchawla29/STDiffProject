@@ -1,8 +1,6 @@
 """
 Modified from https://github.com/WeilunWang/SinDiffusion/tree/main/guided_diffusion
 """
-from abc import abstractmethod
-from functools import partial
 
 import torch
 import torch.nn as nn
@@ -119,7 +117,7 @@ class DiffUnet(nn.Module):
         self.sde = int_cfg.sde
         if self.sde:
             self.diff_unet_g = OdeSdeFuncNet(self.in_channels, self.hidden_channels, self.out_channels, self.n_layers, self.nonlienar)
-            self.noise_type = self.int_cfg.sde_options.noise_type #must specify noise type and sde type for torchsde
+            self.noise_type = self.int_cfg.sde_options.noise_type # must specify noise type and sde type for torchsde
             self.sde_type = self.int_cfg.sde_options.sde_type
 
         self.motion_feature_size = motion_feature_size
@@ -197,8 +195,6 @@ class ConvGRUCell(nn.Module):
         new_h = (1 - u)*prev_h + h_tilde
 
         return new_h
-
-
 class MotionEncoder(nn.Module):
     """
     Modified from
@@ -236,91 +232,7 @@ class MotionEncoder(nn.Module):
         #TO DO: condition on diffferent diffusion timesteps
         out = self.model(x)
         return out
-"""
-#Spatial Fourier feature
-class NRMLP(nn.Module):
-    def __init__(self, out_channels, dim_x = 2, d_model = 64, MLP_layers = 4, scale = 10, fix_B = False):
 
-        Modified based on https://github.com/tancik/fourier-feature-networks/blob/master/Demo.ipynb
-        The output layer is moved to the "PosFeatFuser"
-  
-        super().__init__()
-        self.scale = scale
-        self.dim_x = dim_x
-        self.out_channels = out_channels
-        self.MLP_layers = MLP_layers
-        self.d_model = d_model
-        self.fix_B = fix_B
-        
-        self.MLP = []
-
-        self.mapping_fn = self.gaussian_mapping
-        self.MLP.append(nn.Linear(2*self.d_model, self.d_model))
-        if self.fix_B:
-            self.register_buffer('B', torch.normal(mean = 0, std = 1.0, size = (self.d_model, self.dim_x)) * self.scale)
-        else:
-            #Default init for Linear is uniform distribution, would not produce a result as good as gaussian initialization
-            #self.B = nn.Linear(self.dim_x, self.d_model, bias = False)
-            self.B = nn.Parameter(torch.normal(mean = 0, std = 1.0, size = (self.d_model, self.dim_x)) * self.scale, requires_grad = True)
-            
-            #Init B with normal distribution or constant would produce much different result.
-            #self.B = nn.Parameter(torch.ones(self.d_model, self.dim_x), requires_grad = True)
-        
-        self.MLP.append(nn.ReLU())
-        for i in range(self.MLP_layers - 2):
-            self.MLP.append(nn.Linear(self.d_model, self.d_model))
-            self.MLP.append(nn.ReLU())
-        
-        self.MLP = nn.Sequential(*self.MLP)
-        self.mlp_beta = nn.Linear(self.d_model, out_channels)
-
-    def forward(self, x):
-
-        Args:
-            x: (N, d), N denotes the number of elements (coordinates)
-        Return:
-            out: (N, out_channels)
-
-        x = self.mapping_fn(x)
-        x = self.MLP(x)
-        beta = self.mlp_beta(x)
-        
-        return beta
-        
-
-    def gaussian_mapping(self, x):
-
-        Args:
-            x: (N, d), N denotes the number of elements (coordinates)
-            B: (m, d)
-
-        proj = (2. * float(math.pi) * x) @ self.B.T
-        #proj = self.B(2. * float(math.pi) * x)
-        out = torch.cat([torch.cos(proj), torch.sin(proj)], dim=-1)
-
-        return out
-
-
-def CoorGenerator(h_list, w_list, max_H, max_W):
-
-    The h/w/t index starts with 0
-    Args:
-        h_list: list of h coordinates, Tensor with shape (H,)
-        w_list: list of w coordinates, Tensor with shape (W,)
-    Returns:
-        coor: Tensor with shape (H*W, 2), for the last dim, the coordinate order is (h, w)
-
-    assert torch.max(h_list) <= max_H and torch.min(h_list) >= 0., "Invalid H coordinates"
-    assert torch.max(w_list) <= max_W and torch.min(w_list) >= 0., "Invalid W coordinates"
-
-    norm_h_list = h_list/max_H
-    norm_w_list = w_list/max_W
-
-    hvv, wvv = torch.meshgrid(norm_h_list, norm_w_list)
-    s_coor = torch.stack([hvv, wvv], dim=-1)
-
-    return s_coor.flatten(0, 1)
-"""
 def zero_module(module):
     """
     Zero out the parameters of a module and return it.

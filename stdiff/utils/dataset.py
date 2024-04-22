@@ -47,46 +47,40 @@ class LitDataModule(pl.LightningDataModule):
 
         self.collate_fn = partial(svrfcn, rand_Tp=cfg.Dataset.rand_Tp, rand_predict=cfg.Dataset.rand_predict, o_resize=o_resize, p_resize=p_resize)
 
-    def setup(self):
-        if self.cfg.Dataset.train:
-            Data = MyDataset(self.cfg.Dataset.dir, transform = self.train_transform, num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
-            self.train_set = Data()
-            self.test_set = None
+    def setup(self, stage: Optional[str] = None):
+        self.train_set = None
+        self.test_set = None
 
-        else:
-            Data = MyDataset(self.cfg.Dataset.dir, transform = self.test_transform, num_observed_frames= self.cfg.Dataset.num_observed_frames, num_predict_frames= self.cfg.Dataset.num_predict_frames)
-            self.train_set = None
-            self.test_set = Data()
+        if stage in ('train',None):
+            TrainData = MyDataset(Path(self.cfg.Dataset.dir), transform=self.train_transform, train=True, num_observed_frames=self.cfg.Dataset.num_observed_frames, num_predict_frames=self.cfg.Dataset.num_predict_frames)
+            self.train_set = TrainData()
+
+        if stage in ('test','predict'):
+            TestData = MyDataset(Path(self.cfg.Dataset.dir), transform=self.test_transform, train=False, num_observed_frames=self.cfg.Dataset.test_num_observed_frames, num_predict_frames=self.cfg.Dataset.test_num_predict_frames)
+            self.test_set = TestData()
 
     def train_dataloader(self):
-        if self.train_set is None: 
-            return None
-        else:
-            return DataLoader(self.train_set, shuffle = True, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = True, collate_fn = self.collate_fn)
+        return DataLoader(self.train_set, shuffle=True, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last=True, collate_fn=self.collate_fn) if self.train_set else None
 
     def test_dataloader(self):
-        if self.test_set is None:
-            return None
-        else:
-            return DataLoader(self.test_set, shuffle = False, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last = False, collate_fn = self.collate_fn)
-
+        return DataLoader(self.test_set, shuffle=False, batch_size=self.cfg.Dataset.batch_size, num_workers=self.cfg.Dataset.num_workers, drop_last=True, collate_fn=self.collate_fn) if self.test_set else None
 
 def get_lightning_module_dataloader(cfg):
     pl_datamodule = LitDataModule(cfg)
-    pl_datamodule.setup()
+    pl_datamodule.setup(stage=cfg.Dataset.stage)
     return pl_datamodule.train_dataloader(), pl_datamodule.test_dataloader()
 
 class MyDataset(object):
     """
     a wrapper for ClipDataset, inspired by the original implementation of KTH dataset
     the original frame size is (H, W) = (160,240)
-    Return the train and test dataset
+    Return the train/test dataset
     """
-    def __init__(self, dir, transform,
-                 num_observed_frames, num_predict_frames):
+    def __init__(self, dir, transform, num_observed_frames, num_predict_frames):
         """
         Args:
             dir --- Directory for extracted video frames
+            train --- True for training dataset, False for test dataset
             transform --- torchvision transform functions
             num_observed_frames --- number of past frames
             num_predict_frames --- number of future frames
@@ -99,6 +93,7 @@ class MyDataset(object):
         self.path = Path(dir).absolute()
 
         frame_folders = [self.path.joinpath(s) for s in os.listdir(self.path)]
+
         self.clips = self.__getClips__(frame_folders)
 
     def __call__(self):
@@ -168,27 +163,7 @@ class ClipDataset(Dataset):
         future_clip = original_clip[-self.num_predict_frames:, ...]
         return past_clip, future_clip
 
-    def visualize_clip(self, clip, file_name):
-        """
-        save a video clip to GIF file
-        Args:
-            clip: tensor with shape (clip_length, C, H, W)
-        """
-        imgs = []
-        for i in range(clip.shape[0]):
-            img = transforms.ToPILImage()(clip[i, ...])
-            imgs.append(img)
-        
-        videodims = img.size
-        fourcc = cv2.VideoWriter_fourcc(*'MP4V')    
-        video = cv2.VideoWriter(Path(file_name).absolute().as_posix(), fourcc, 10, videodims)
-        for img in imgs:
-            video.write(cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR))
-        video.release()
-        #imgs[0].save(str(Path(file_name).absolute()), save_all = True, append_images = imgs[1:])
-
-
-def svrfcn(batch_data, rand_Tp = 1, rand_predict = True, o_resize = None, p_resize = None):
+def svrfcn(batch_data, rand_Tp = 3, rand_predict = True, o_resize = None, p_resize = None):
     """
     Single video dataset random future frames collate function
     batch_data: list of tuples, each tuple is (observe_clip, predict_clip)
@@ -198,7 +173,7 @@ def svrfcn(batch_data, rand_Tp = 1, rand_predict = True, o_resize = None, p_resi
     observe_batch = torch.stack(observe_clips, dim=0)
     predict_batch = torch.stack(predict_clips, dim=0)
 
-    #output the last frame of observation, taken as the first frame of autoregressive prediction
+    # output the last frame of observation, taken as the first frame of autoregressive prediction
     observe_last_batch = observe_batch[:, -1:, ...]
     
     max_Tp = predict_batch.shape[1]
@@ -217,7 +192,7 @@ def svrfcn(batch_data, rand_Tp = 1, rand_predict = True, o_resize = None, p_resi
         N, T, _, _, _ = rand_predict_batch.shape
         rand_predict_batch = p_resize(rand_predict_batch.flatten(0, 1))
         rand_predict_batch = rearrange(rand_predict_batch, "(N T) C H W -> N T C H W", N = N, T=T)
-        #als resize the last frame of observation
+        #also resize the last frame of observation
         observe_last_batch = p_resize(observe_last_batch.flatten(0, 1))
         observe_last_batch = rearrange(observe_last_batch, "(N T) C H W -> N T C H W", N = N, T=1)
         
@@ -241,28 +216,6 @@ class VidResize(object):
 
         return clip
 
-class VidRandomCrop(object):
-    def __init__(self, *args, **kwargs):
-        self.kwargs = kwargs
-        self.args = args
-
-    def __call__(self, clip: List[Image.Image]):
-        for i in range(len(clip)):
-            clip[i] = transforms.RandomCrop(*self.args, **self.kwargs)(clip[i])
-
-        return clip
-
-class VidCenterCrop(object):
-    def __init__(self, *args, **kwargs):
-        self.kwargs = kwargs
-        self.args = args
-
-    def __call__(self, clip: List[Image.Image]):
-        for i in range(len(clip)):
-            clip[i] = transforms.CenterCrop(*self.args, **self.kwargs)(clip[i])
-
-        return clip
-        
 class VidRandomHorizontalFlip(object):
     def __init__(self, p: float):
         assert p>=0 and p<=1, "invalid flip probability"
@@ -296,48 +249,6 @@ class VidToTensor(object):
 
         return clip
 
-class VidNormalize(object):
-    def __init__(self, mean, std):
-        self.mean = mean
-        self.std = std
-    def __call__(self, clip: Tensor):
-        """
-        Return: clip --- Tensor with shape (T, C, H, W)
-        """
-        T, _, _, _ = clip.shape
-        for i in range(T):
-            clip[i, ...] = transforms.Normalize(self.mean, self.std)(clip[i, ...])
-
-        return clip
-
-class VidReNormalize(object):
-    def __init__(self, mean, std):
-        try:
-            self.inv_std = [1.0/s for s in std]
-            self.inv_mean = [-m for m in mean]
-            self.renorm = transforms.Compose([transforms.Normalize(mean = [0., 0., 0.],
-                                                                std = self.inv_std),
-                                            transforms.Normalize(mean = self.inv_mean,
-                                                                std = [1., 1., 1.])])
-        except TypeError:
-            #try normalize for grey_scale images.
-            self.inv_std = 1.0/std
-            self.inv_mean = -mean
-            self.renorm = transforms.Compose([transforms.Normalize(mean = 0.,
-                                                                std = self.inv_std),
-                                            transforms.Normalize(mean = self.inv_mean,
-                                                                std = 1.)])
-
-    def __call__(self, clip: Tensor):
-        """
-        Return: clip --- Tensor with shape (T, C, H, W)
-        """
-        T, _, _, _ = clip.shape
-        for i in range(T):
-            clip[i, ...] = self.renorm(clip[i, ...])
-
-        return clip
-
 class VidPad(object):
     """
     If pad, Do not forget to pass the mask to the transformer encoder.
@@ -351,130 +262,3 @@ class VidPad(object):
             clip[i] = transforms.Pad(*self.args, **self.kwargs)(clip[i])
 
         return clip
-
-def mean_std_compute(dataset, device, color_mode = 'RGB'):
-    """
-    arguments:
-        dataset: pytorch dataloader
-        device: torch.device('cuda:0') or torch.device('cpu') for computation
-    return:
-        mean and std of each image channel.
-        std = sqrt(E(x^2) - (E(X))^2)
-    """
-    data_iter= iter(dataset)
-    sum_img = None
-    square_sum_img = None
-    N = 0
-
-    pgbar = tqdm(desc = 'summarizing...', total = len(dataset))
-    for idx, sample in enumerate(data_iter):
-        past, future = sample
-        clip = torch.cat([past, future], dim = 0)
-        N += clip.shape[0]
-
-        img = torch.sum(clip, axis = 0)
-
-        if idx == 0:
-            sum_img = img
-            square_sum_img = torch.square(img)
-            sum_img = sum_img.to(torch.device(device))
-            square_sum_img = square_sum_img.to(torch.device(device))
-        else:
-            img = img.to(device)
-            sum_img = sum_img + img
-            square_sum_img = square_sum_img + torch.square(img)
-        
-        pgbar.update(1)
-    
-    pgbar.close()
-
-    mean_img = sum_img/N
-    mean_square_img = square_sum_img/N
-    if color_mode == 'RGB':
-        mean_r, mean_g, mean_b = torch.mean(mean_img[0, :, :]), torch.mean(mean_img[1, :, :]), torch.mean(mean_img[2, :, :])
-        mean_r2, mean_g2, mean_b2 = torch.mean(mean_square_img[0,:,:]), torch.mean(mean_square_img[1,:,:]), torch.mean(mean_square_img[2,:,:])
-        std_r, std_g, std_b = torch.sqrt(mean_r2 - torch.square(mean_r)), torch.sqrt(mean_g2 - torch.square(mean_g)), torch.sqrt(mean_b2 - torch.square(mean_b))
-
-        return ([mean_r.cpu().numpy(), mean_g.data.cpu().numpy(), mean_b.cpu().numpy()], [std_r.cpu().numpy(), std_g.cpu().numpy(), std_b.cpu().numpy()])
-    else:
-        mean = torch.mean(mean_img)
-        mean_2 = torch.mean(mean_square_img)
-        std = torch.sqrt(mean_2 - torch.square(mean))
-
-        return (mean.cpu().numpy(), std.cpu().numpy())
-
-def get_data_scaler(config):
-  """Data normalizer. Assume data are always in [0, 1]."""
-  if config.Dataset:
-    # Rescale to [-1, 1]
-    return lambda x: x * 2. - 1.
-  else:
-    return lambda x: x
-
-def get_data_inverse_scaler(config):
-  """Inverse data normalizer."""
-  if config.Dataset.centered:
-    # Rescale [-1, 1] to [0, 1]
-    return lambda x: (x + 1.) / 2.
-  else:
-    return lambda x: x
-
-def visualize_batch_clips(gt_past_frames_batch, gt_future_frames_batch, pred_frames_batch, file_dir, idx, renorm_transform = None, desc = None):
-
-    """
-        pred_frames_batch: tensor with shape (N, future_clip_length, C, H, W)
-        gt_future_frames_batch: tensor with shape (N, future_clip_length, C, H, W)
-        gt_past_frames_batch: tensor with shape (N, past_clip_length, C, H, W)
-    """
-    if not Path(file_dir).exists():
-        Path(file_dir).mkdir(parents=True, exist_ok=True) 
-    def save_clip(clip, file_name):
-        imgs = []
-        if renorm_transform is not None:
-            clip = renorm_transform(clip)
-            clip = torch.clamp(clip, min = 0., max = 1.0)
-        for i in range(clip.shape[0]):
-            img = transforms.ToPILImage()(clip[i, ...])
-            imgs.append(img)
-
-        imgs[0].save(str(Path(file_name).absolute()), save_all = True, append_images = imgs[1:], loop = 0)
-    
-    def append_frames(batch, max_clip_length):
-        d = max_clip_length - batch.shape[1]
-        batch = torch.cat([batch, batch[:, -2:-1, :, :, :].repeat(1, d, 1, 1, 1)], dim = 1)
-        return batch
-    max_length = max(gt_future_frames_batch.shape[1], gt_past_frames_batch.shape[1])
-    max_length = max(max_length, pred_frames_batch.shape[1])
-    if gt_past_frames_batch.shape[1] < max_length:
-        gt_past_frames_batch = append_frames(gt_past_frames_batch, max_length)
-    if gt_future_frames_batch.shape[1] < max_length:
-        gt_future_frames_batch = append_frames(gt_future_frames_batch, max_length)
-    if pred_frames_batch.shape[1] < max_length:    
-        pred_frames_batch = append_frames(pred_frames_batch, max_length)
-
-    batch = torch.cat([gt_past_frames_batch, gt_future_frames_batch, pred_frames_batch], dim = -1) #shape (N, clip_length, C, H, 3W)
-    batch = batch.cpu()
-
-    N = batch.shape[0]
-    for n in range(N):
-        clip = batch[n, ...]
-        file_name = file_dir.joinpath(f'{desc}_clip_{n}.gif')
-
-        imgs = []
-        if renorm_transform is not None:
-            clip = renorm_transform(clip)
-            clip = torch.clamp(clip, min = 0., max = 1.0)
-
-        for i in range(clip.shape[0]):
-            img = transforms.ToPILImage()(clip[i, ...])
-            imgs.append(img)
-        
-        imgs[0].save(str(Path(file_name).absolute()), save_all = True, append_images = imgs[1:], loop = 0)
-
-        last_frame = pred_frames_batch[n, -1, ...] # last frame of the clip in this batch
-
-        last_frame = transforms.ToPILImage()(last_frame)
-        img_name = str(Path(file_dir.absolute()))+f'_{idx}_{n}.png'
-        last_frame.save(img_name)
-
-

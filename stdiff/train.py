@@ -1,4 +1,3 @@
-import inspect
 import logging
 import math
 import os
@@ -20,10 +19,8 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available
 
-
-import hydra
 from hydra import compose, initialize
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 from utils import get_lightning_module_dataloader
 from models import STDiffDiffusers, STDiffPipeline
@@ -32,24 +29,6 @@ from models import STDiffDiffusers, STDiffPipeline
 check_min_version("0.15.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
-
-
-def _extract_into_tensor(arr, timesteps, broadcast_shape):
-    """
-    Extract values from a 1-D numpy array for a batch of indices.
-
-    :param arr: the 1-D numpy array.
-    :param timesteps: a tensor of indices into the array to extract.
-    :param broadcast_shape: a larger shape of K dimensions with the batch
-                            dimension equal to the length of timesteps.
-    :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
-    """
-    if not isinstance(arr, torch.Tensor):
-        arr = torch.from_numpy(arr)
-    res = arr[timesteps].float().to(timesteps.device)
-    while len(res.shape) < len(broadcast_shape):
-        res = res[..., None]
-    return res.expand(broadcast_shape)
 
 def parse_args():
     parser = argparse.ArgumentParser(description=globals()['__doc__'])
@@ -279,7 +258,7 @@ def main(cfg : DictConfig) -> None:
                     output_type="numpy"
                 ).images
 
-                # denormalize the images and save to tensorboard
+                # Denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
 
                 if cfg.Env.logger == "tensorboard":
@@ -290,7 +269,7 @@ def main(cfg : DictConfig) -> None:
                     tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
 
             if epoch % cfg.Training.save_model_epochs == 0 or epoch == cfg.Training.epochs - 1:
-                # save the model
+                # Save the model
                 unet = accelerator.unwrap_model(model)
 
                 pipeline = STDiffPipeline(
