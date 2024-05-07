@@ -1,6 +1,6 @@
 
 
-# STDiff applied to (animated) CLEVR</h1>
+# STDiff applied to CLEVRER</h1>
 adapted from [XiYe20/STDiffProject](https://github.com/XiYe20/STDiffProject) (paper: [arXiv link](https://arxiv.org/abs/2312.06486))
 
 <img src="./res/imageData.png" alt="STDiff Architecture" width="100%">
